@@ -9,6 +9,8 @@ import re
 import subprocess
 import perf_formatter
 
+from mkcdict_perf_script import trace_begin
+from mkcdict_perf_script import trace_end
 from mkcdict_perf_script import add_event
 from mkcdict_perf_script import kvm_entry
 from mkcdict_perf_script import kvm_exit
@@ -37,7 +39,8 @@ def get_curated_latency_table(table):
         # count how many spaces at head
         non_space = 0
         len_tname = len(tname)
-        while non_space < len_tname and tname[non_space] == ' ': non_space += 1
+        while non_space < len_tname and tname[non_space] == ' ':
+            non_space += 1
         tname = tname[non_space:]
         if tname.startswith('qemu-'):
             index = tname.rfind(':')
@@ -102,7 +105,8 @@ def _kvm_exit(cpu, secs, nsecs, pid, comm, args):
 
 # sched:sched_switch: prev_comm=qemu-system-x86 prev_pid=28823 prev_prio=120 prev_state=S ==>
 # next_comm=swapper/7 next_pid=0 next_prio=120
-switch_re = re.compile('comm=([\w\-/]+) prev_pid=(\d+) prev_prio=\d+ prev_state=\w* ==> next_comm=([\w\-/]+) next_pid=(\d+) ')
+switch_re = re.compile('comm=([\w\-/]+) prev_pid=(\d+) prev_prio=\d+ prev_state=\w* ==> '
+                       'next_comm=([\w\-/]+) next_pid=(\d+) ')
 
 def sched_switch(cpu, secs, nsecs, pid, comm, args):
 
@@ -184,7 +188,7 @@ def decode_txt():
                 try:
                     fn_dispatch[event](event_args)
                 except KeyError:
-                    print 'unknown:'+event
+                    print 'unknown:' + event
                     pass
             else:
                 print 'cannot decode:' + line

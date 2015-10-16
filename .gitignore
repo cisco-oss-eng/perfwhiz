@@ -1,2 +1,6 @@
 *.html
 *.cdict
+.tox
+*.egg
+*.egg-info
+*.pyc

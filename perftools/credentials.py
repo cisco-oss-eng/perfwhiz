@@ -1,4 +1,4 @@
-# Copyright 2014 Cisco Systems, Inc.  All rights reserved.
+# Copyright 2015 Cisco Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -105,5 +105,3 @@ class Credentials(object):
         elif self.rc_auth_url and not self.rc_password:
             if 'OS_PASSWORD' in os.environ:
                 self.rc_password = os.environ['OS_PASSWORD']
-
-

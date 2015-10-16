@@ -13,9 +13,7 @@
 import os
 import sys
 from os.path import expanduser
-from optparse import OptionParser
 import re
-import subprocess
 try:
     sys.path.append(os.environ['PERF_EXEC_PATH'] +
                     '/scripts/python/perf-script-Util/lib/Perf/Trace')
@@ -138,7 +136,7 @@ def add_event(name, cpu, secs, nsecs, pid, comm, duration=0, next_pid=0, next_co
     pid_list.append(pid)
     comm_list.append(get_final_name(pid, comm))
     # duration in usec
-    duration_list.append(duration/1000)
+    duration_list.append(duration / 1000)
     next_pid_list.append(next_pid)
     next_comm_list.append(get_final_name(next_pid, next_comm))
 
@@ -211,8 +209,8 @@ class KvmTime(object):
 
     def add_exit(self, cpu, secs, nsecs, comm, reason):
         if self.entry_time:
-            self.exit_time =  add_kvm_event('kvm_exit', cpu, secs, nsecs, self.tid,
-                                            comm, self.entry_time, reason)
+            self.exit_time = add_kvm_event('kvm_exit', cpu, secs, nsecs, self.tid,
+                                           comm, self.entry_time, reason)
         else:
             self.exit_time = get_usecs(secs, nsecs)
 

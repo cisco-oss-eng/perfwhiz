@@ -6,8 +6,6 @@
 
 from optparse import OptionParser
 import sys
-import os.path
-import re, glob
 import itertools
 #
 # Import reusable code from pnstk.py
@@ -44,7 +42,7 @@ KVM_EXIT_REASONS = [
     'Task Switch',
     'CPUID',                # 10
     'GETSEC',
-    'HLT',                   # 12
+    'HLT',                  # 12
     'INVD',
     'INVLPG',
     'RDPMC',
@@ -52,7 +50,7 @@ KVM_EXIT_REASONS = [
     'RSM',
     'VMCALL',
     'VMCLEAR',
-    'VMLAUNCH',             #20
+    'VMLAUNCH',             # 20
     'VMPTRLD',
     'VMPTRST',
     'VMREAD',
@@ -62,7 +60,7 @@ KVM_EXIT_REASONS = [
     'VMXON',
     'Control Register Access',
     'MOV DR',
-    'I/O Instruction',      #30
+    'I/O Instruction',      # 30
     'RDMSR',
     'WRMSR',
     'VM Entry Failure (invalid guest state)',
@@ -72,7 +70,7 @@ KVM_EXIT_REASONS = [
     'Monitor trap flag',
     'n/a 38',
     'MONITOR',
-    'PAUSE',                #40
+    'PAUSE',                # 40
     'VM Entry Failure (machine check)',
     'n/a 42',
     'TPR below threshold',
@@ -90,9 +88,9 @@ KVM_EXIT_REASONS = [
     'XSETBV'
 ]
 GREEN = "#5ab738"
-RED =  "#f22c40"
+RED = "#f22c40"
 
-DEFAULT_PALETTE = [ GREEN, RED, "#407ee7", "#df5320", "#00ad9c", "#c33ff3"]
+DEFAULT_PALETTE = [GREEN, RED, "#407ee7", "#df5320", "#00ad9c", "#c33ff3"]
 
 
 def cycle_colors(chunk, palette=DEFAULT_PALETTE):
@@ -159,7 +157,8 @@ def convert_exit_df(df, label):
     df.next_comm = df.next_comm.apply(lambda x: '(%02d) %s' % (x, KVM_EXIT_REASONS[x]))
     series_percent = df.next_comm.value_counts(normalize=True)
     series_count = df.next_comm.value_counts()
-    series_percent = pandas.Series(["{0:.2f}%".format(val * 100) for val in series_percent], index=series_percent.index)
+    series_percent = pandas.Series(["{0:.2f}%".format(val * 100) for val in series_percent],
+                                   index=series_percent.index)
 
     series_percent.name = '%'
     series_count.name = label + ' count'
@@ -264,10 +263,11 @@ def show_successors(df, tid):
     df = df[df['pid'] == tid]
     df = df[df['event'] == 'sched__sched_switch']
     # aggregate all the per core tasks (e.g. swapper/0 -> swapper)
-    df['next_comm'] = df['next_comm'].str.replace(r'/.*$','')
+    df['next_comm'] = df['next_comm'].str.replace(r'/.*$', '')
     series_percent = df.next_comm.value_counts(normalize=True)
     series_count = df.next_comm.value_counts()
-    series_percent = pandas.Series(["{0:.2f}%".format(val * 100) for val in series_percent], index=series_percent.index)
+    series_percent = pandas.Series(["{0:.2f}%".format(val * 100) for val in series_percent],
+                                   index=series_percent.index)
 
     series_percent.name = 'percent'
     series_count.name = 'count'
@@ -304,11 +304,13 @@ parser.add_option("--kvm-exits",
                   )
 parser.add_option("-c", "--cap",
                   dest="cap_time",
-                  help="(optional) cap the analysis to first <cap_time> msec of capture (default=all)"
+                  help="(optional) cap the analysis to first <cap_time> msec"
+                       " of capture (default=all)"
                   )
 parser.add_option("-f", "--from",
                   dest="from_time",
-                  help="(optional) start the analysis after first <from_time> msec of capture (default=0)"
+                  help="(optional) start the analysis after first <from_time> msec"
+                       " of capture (default=0)"
                   )
 (options, args) = parser.parse_args()
 
@@ -320,7 +322,8 @@ df = DataFrame(  {'AAA': [0, 0, 0, 1,2,3,4,5,6,7,8,9,10],
                             'kvm_entry',
                             'kvm_exit','kvm_exit','sched__sched_switch',
                             'kvm_exit', 'sched__sched_switch',
-                            'kvm_exit', 'kvm_exit', 'kvm_exit', 'sched__sched_switchB', 'kvm_exit']})
+                            'kvm_exit', 'kvm_exit', 'kvm_exit',
+                            'sched__sched_switchB', 'kvm_exit']})
 show_last_exit_reasons_before_switches(df, 5)
 sys.exit(0)
 '''
