@@ -225,8 +225,7 @@ def capture_traces(cdict_filename, opts, kvm_events=False):
     if cdict_filename:
         try:
             # try to run this script through the perf tool itself as it is faster
-            rc = subprocess.call([perf_binary, 'script', '-s', 'mkcdict_perf_script.py', '-i', perf_data_filename],
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            rc = subprocess.call([perf_binary, 'script', '-s', 'mkcdict_perf_script.py', '-i', perf_data_filename])
             if rc:
                 print '   perf is not built with the python scripting extension, parsing text file (slower)...'
                 text_filename = filename + '.txt'

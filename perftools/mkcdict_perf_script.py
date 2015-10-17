@@ -46,11 +46,21 @@ name_by_tid = {}
 # counts how many are being ignored (not counted) in the cdict
 event_drops = {}
 
+# A dict of counts indexed by event name
+# counts how many are being counted and added to the cdict
+event_counts = {}
+
 def drop_event(event_name):
     try:
         event_drops[event_name] += 1
     except KeyError:
         event_drops[event_name] = 1
+
+def count_event(event_name):
+    try:
+        event_counts[event_name] += 1
+    except KeyError:
+        event_counts[event_name] = 1
 
 def trace_begin():
     global plugin_convert_name
@@ -68,6 +78,10 @@ def trace_end():
     print 'Dropped events (not stored in cdict file):'
     for name in sorted(event_drops, key=event_drops.get, reverse=True):
         print '   %6d %s' % (event_drops[name], name)
+    print
+    print 'Events stored in cdict file:'
+    for name in sorted(event_counts, key=event_counts.get, reverse=True):
+        print '   %6d %s' % (event_counts[name], name)
     print
     # build cdict
     res = {'event': event_name_list,
@@ -160,6 +174,7 @@ def add_event(name, cpu, secs, nsecs, pid, comm, duration=0, next_pid=0, next_co
     duration_list.append(duration / 1000)
     next_pid_list.append(next_pid)
     next_comm_list.append(get_final_name(next_pid, next_comm))
+    count_event(name)
 
 def add_kvm_event(name, cpu, secs, nsecs, pid, comm, prev_usecs, reason=None):
     usecs = get_usecs(secs, nsecs)
@@ -171,6 +186,7 @@ def add_kvm_event(name, cpu, secs, nsecs, pid, comm, prev_usecs, reason=None):
     duration_list.append(usecs - prev_usecs)
     next_pid_list.append(None)
     next_comm_list.append(reason)
+    count_event(name)
     return usecs
 
 def sched__sched_stat_sleep(event_name, context, common_cpu,
