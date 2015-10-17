@@ -50,14 +50,17 @@ class Credentials(object):
         self.rc_username = None
         self.rc_tenant_name = None
         self.rc_auth_url = None
+        openrc_file = None
+        pwd = None
+
         try:
             pwd = opts.password
         except AttributeError:
-            pwd = None
+            pass
         try:
             openrc_file = opts.rc
         except AttributeError:
-            openrc_file = None
+            pass
 
         if openrc_file:
             if os.path.exists(openrc_file):

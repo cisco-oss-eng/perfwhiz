@@ -1,6 +1,7 @@
 import re
 import credentials
 from novaclient.client import Client
+import os
 
 
 # ESC_Day0-3__62940__MT__MTPerftest_FULL_01ESC_Day0-31.1__0__CSR__0
@@ -20,8 +21,20 @@ def decode_instance_name(name):
         return int(chain_id), nvf
     return None, None
 
-def plugin_init(opts):
-    # Parse the credentials of the OpenStack cloud, and run the benchmarking
+class OptionsHolder(object):
+    def __init__(self):
+        # read env variable OS_RC in case an openstack rc file is passed
+        # using an env variable - useful when the perf tool is launched using
+        # sudo perf (env variables are not inherited)
+        if 'OS_RC' in os.environ:
+            self.rc = os.environ['OS_RC']
+        else:
+            self.rc = None
+
+def plugin_init(opts=None):
+    # Parse the credentials of the OpenStack cloud
+    if not opts:
+        opts = OptionsHolder()
     cred = credentials.Credentials(opts)
     creds_nova = cred.get_nova_credentials_v2()
     # Create the nova and neutron instances

@@ -15,6 +15,9 @@ from mkcdict_perf_script import add_event
 from mkcdict_perf_script import kvm_entry
 from mkcdict_perf_script import kvm_exit
 
+perf_binary = 'perf'
+
+
 # Curate the task names for a latency table
 #  ---------------------------------------------------------------------------------------------------------------
 #  Task                  |   Runtime ms  | Switches | Average delay ms | Maximum delay ms | Maximum delay at     |
@@ -57,7 +60,7 @@ def get_curated_latency_table(table):
     return '\n'.join(results)
 
 def perf_record(opts, cs, kvm):
-    perf_cmd = ['perf', 'sched', 'record']
+    perf_cmd = [perf_binary, 'sched', 'record']
     if cs:
         perf_cmd += ['-e', 'sched:*']
     if kvm:
@@ -74,7 +77,7 @@ def capture_stats(opts, cs=False, kvm=False):
     if perf_record(opts, cs, kvm):
         if cs:
             # perf sched latency -s switch
-            cmd = ['perf', 'sched', 'latency', '-s', 'switch']
+            cmd = [perf_binary, 'sched', 'latency', '-s', 'switch']
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=None)
             results, errors = process.communicate()
             if errors:
@@ -83,7 +86,7 @@ def capture_stats(opts, cs=False, kvm=False):
                 # curate the process names before displaying
                 print get_curated_latency_table(results)
         if kvm:
-            rc = subprocess.call(['perf', 'kvm', 'stat', 'report'])
+            rc = subprocess.call([perf_binary, 'kvm', 'stat', 'report'])
             if rc:
                 print 'Error displaying kvm stats'
 
@@ -222,14 +225,14 @@ def capture_traces(cdict_filename, opts, kvm_events=False):
     if cdict_filename:
         try:
             # try to run this script through the perf tool itself as it is faster
-            rc = subprocess.call(['perf', 'script', '-s', 'mkcdict_perf_script.py', '-i', perf_data_filename],
+            rc = subprocess.call([perf_binary, 'script', '-s', 'mkcdict_perf_script.py', '-i', perf_data_filename],
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if rc:
                 print '   perf is not built with the python scripting extension, parsing text file (slower)...'
                 text_filename = filename + '.txt'
                 print '   generating text traces to file %s...' % (text_filename)
                 with open(text_filename, 'w') as ff:
-                    rc = subprocess.call(['perf', 'script', '-i', perf_data_filename],
+                    rc = subprocess.call([perf_binary, 'script', '-i', perf_data_filename],
                                          stdout=ff, stderr=subprocess.PIPE)
                 # parse the text file into a cdict file
                 print '   Feature not implemented'
@@ -279,6 +282,11 @@ if __name__ == '__main__':
                       help='use given perf data file (do not capture)',
                       metavar='<perf data file>')
 
+    parser.add_option('--use-perf', dest='perf',
+                      action='store',
+                      help='use given perf binary',
+                      metavar='<perf binary>')
+
     parser.add_option('-r', '--rc', dest='rc',
                       action='store',
                       help='source OpenStack credentials from rc file',
@@ -303,6 +311,9 @@ if __name__ == '__main__':
         print 'Using default qemu task name mapping (no plugin found)'
     except ValueError:
         print 'Using default qemu task name mapping (OpenStack credentials not found, use -r or env variables)'
+
+    if opts.perf:
+        perf_binary = opts.perf
 
     if opts.cs_traces:
         capture_traces(opts.cs_traces, opts)

@@ -42,6 +42,15 @@ next_comm_list = []
 # a dict of task names indexed by tid
 name_by_tid = {}
 
+# A dict of counts indexed by event name
+# counts how many are being ignored (not counted) in the cdict
+event_drops = {}
+
+def drop_event(event_name):
+    try:
+        event_drops[event_name] += 1
+    except KeyError:
+        event_drops[event_name] = 1
 
 def trace_begin():
     global plugin_convert_name
@@ -55,6 +64,12 @@ def trace_begin():
         plugin_convert_name = None
 
 def trace_end():
+    # report dropped kvm events
+    print 'Dropped events (not stored in cdict file):'
+    for name in sorted(event_drops, key=event_drops.get, reverse=True):
+        print '   %6d %s' % (event_drops[name], name)
+    print
+    # build cdict
     res = {'event': event_name_list,
            'cpu': cpu_list,
            'usecs': usecs_list,
@@ -79,27 +94,33 @@ cpuset_re = re.compile('/machine/(instance-[a-fA-F0-9]*).libvirt-qemu/(\w*)')
 def decode_cpuset(pid):
     name = None
     thread_type = None
-    with open('/proc/%d/cpuset' % (pid)) as f:
-        cpuset = f.read()
-        res = cpuset_re.match(cpuset)
-        if res:
-            name = res.group(1)
-            thread_type = res.group(2)
+    try:
+        with open('/proc/%d/cpuset' % (pid)) as f:
+            cpuset = f.read()
+            res = cpuset_re.match(cpuset)
+            if res:
+                name = res.group(1)
+                thread_type = res.group(2)
+    except IOError:
+        pass
     return name, thread_type
 
 def decode_pid(pid):
     name = None
     uuid = None
     thread_type = None
-    with open('/proc/%d/cmdline' % (pid)) as f:
-        cmdline = f.read()
-        # this is a nul separated tokens
-        cmdline = cmdline.replace('\x00', ' ')
-        if cmdline.startswith('/usr/bin/qemu-system'):
-            res = uuid_re.search(cmdline)
-            if res:
-                uuid = res.group(1)
-                name, thread_type = decode_cpuset(pid)
+    try:
+        with open('/proc/%d/cmdline' % (pid)) as f:
+            cmdline = f.read()
+            # this is a nul separated tokens
+            cmdline = cmdline.replace('\x00', ' ')
+            if cmdline.startswith('/usr/bin/qemu-system'):
+                res = uuid_re.search(cmdline)
+                if res:
+                    uuid = res.group(1)
+                    name, thread_type = decode_cpuset(pid)
+    except IOError:
+        pass
     return name, uuid, thread_type
 
 def get_final_name(tid, name):
@@ -164,14 +185,14 @@ def sched__sched_wakeup_new(event_name, context, common_cpu,
                             common_secs, common_nsecs, common_pid, common_comm,
                             comm, pid, prio, success,
                             target_cpu):
-    pass
+    drop_event(event_name)
 
 
 def sched__sched_wakeup(event_name, context, common_cpu,
                         common_secs, common_nsecs, common_pid, common_comm,
                         comm, pid, prio, success,
                         target_cpu):
-    pass
+    drop_event(event_name)
 
 
 def sched__sched_stat_runtime(event_name, context, common_cpu,
@@ -259,533 +280,370 @@ def kvm_exit(common_cpu, common_secs, common_nsecs, common_pid, common_comm, exi
 def sched__sched_process_hang(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               comm, pid):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
-
-    print "comm=%s, pid=%d\n" % \
-          (comm, pid),
+    drop_event(event_name)
 
 
 def sched__sched_pi_setprio(event_name, context, common_cpu,
                             common_secs, common_nsecs, common_pid, common_comm,
                             comm, pid, oldprio, newprio):
-    pass
+    drop_event(event_name)
 
 
 def sched__sched_stat_blocked(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               comm, pid, delay):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
-
-    print "comm=%s, pid=%d, delay=%u\n" % \
-          (comm, pid, delay),
+    drop_event(event_name)
 
 
 def sched__sched_stat_wait(event_name, context, common_cpu,
                            common_secs, common_nsecs, common_pid, common_comm,
                            comm, pid, delay):
-    pass
+    drop_event(event_name)
 
 
 def sched__sched_process_exec(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               filename, pid, old_pid):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "filename=%s, pid=%d, old_pid=%d\n" % \
-          (filename, pid, old_pid),
 
 
 def sched__sched_process_fork(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               parent_comm, parent_pid, child_comm, child_pid):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "parent_comm=%s, parent_pid=%d, child_comm=%s, " \
-          "child_pid=%d\n" % \
-          (parent_comm, parent_pid, child_comm, child_pid),
 
 
 def sched__sched_process_wait(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               comm, pid, prio):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "comm=%s, pid=%d, prio=%d\n" % \
-          (comm, pid, prio),
 
 
 def sched__sched_wait_task(event_name, context, common_cpu,
                            common_secs, common_nsecs, common_pid, common_comm,
                            comm, pid, prio):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "comm=%s, pid=%d, prio=%d\n" % \
-          (comm, pid, prio),
 
 
 def sched__sched_process_exit(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               comm, pid, prio):
-    pass
+    drop_event(event_name)
 
 
 def sched__sched_process_free(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               comm, pid, prio):
-    pass
+    drop_event(event_name)
 
 
 def sched__sched_migrate_task(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               comm, pid, prio, orig_cpu,
                               dest_cpu):
-    pass
+    drop_event(event_name)
 
 
 def sched__sched_kthread_stop_ret(event_name, context, common_cpu,
                                   common_secs, common_nsecs, common_pid, common_comm,
                                   ret):
-    pass
+    drop_event(event_name)
 
 
 def sched__sched_kthread_stop(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               comm, pid):
-    pass
+    drop_event(event_name)
 
 
 def kvm__kvm_async_pf_completed(event_name, context, common_cpu,
                                 common_secs, common_nsecs, common_pid, common_comm,
                                 address, gva):
-    pass
+    drop_event(event_name)
 
 
 def kvm__kvm_async_pf_ready(event_name, context, common_cpu,
                             common_secs, common_nsecs, common_pid, common_comm,
                             token, gva):
-    pass
+    drop_event(event_name)
 
 
 def kvm__kvm_async_pf_not_present(event_name, context, common_cpu,
                                   common_secs, common_nsecs, common_pid, common_comm,
                                   token, gva):
-    pass
+    drop_event(event_name)
 
 
 def kvm__kvm_async_pf_doublefault(event_name, context, common_cpu,
                                   common_secs, common_nsecs, common_pid, common_comm,
                                   gva, gfn):
-    pass
+    drop_event(event_name)
 
 
 def kvm__kvm_try_async_get_page(event_name, context, common_cpu,
                                 common_secs, common_nsecs, common_pid, common_comm,
                                 gva, gfn):
-    pass
+    drop_event(event_name)
 
 
 def kvm__kvm_age_page(event_name, context, common_cpu,
                       common_secs, common_nsecs, common_pid, common_comm,
                       hva, gfn, referenced):
-    pass
+    drop_event(event_name)
 
 
 def kvm__kvm_fpu(event_name, context, common_cpu,
                  common_secs, common_nsecs, common_pid, common_comm,
                  load):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
-
-    print "load=%s\n" % \
-          (symbol_str("kvm__kvm_fpu", "load", load)),
+    drop_event(event_name)
 
 
 def kvm__kvm_mmio(event_name, context, common_cpu,
                   common_secs, common_nsecs, common_pid, common_comm,
                   type, len, gpa, val):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "type=%s, len=%u, gpa=%u, " \
-          "val=%u\n" % \
-          (symbol_str("kvm__kvm_mmio", "type", type), len, gpa, val),
 
 
 def kvm__kvm_ack_irq(event_name, context, common_cpu,
                      common_secs, common_nsecs, common_pid, common_comm,
                      irqchip, pin):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "irqchip=%s, pin=%u\n" % \
-          (symbol_str("kvm__kvm_ack_irq", "irqchip", irqchip), pin),
 
 
 def kvm__kvm_msi_set_irq(event_name, context, common_cpu,
                          common_secs, common_nsecs, common_pid, common_comm,
                          address, data):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "address=%u, data=%s\n" % \
-          (address,
-           symbol_str("kvm__kvm_msi_set_irq", "data", data)),
 
 
 def kvm__kvm_ioapic_set_irq(event_name, context, common_cpu,
                             common_secs, common_nsecs, common_pid, common_comm,
                             e, pin, coalesced):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "e=%s, pin=%d, coalesced=%u\n" % \
-          (symbol_str("kvm__kvm_ioapic_set_irq", "e", e), pin, coalesced),
 
 
 def kvm__kvm_set_irq(event_name, context, common_cpu,
                      common_secs, common_nsecs, common_pid, common_comm,
                      gsi, level, irq_source_id):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "gsi=%u, level=%d, irq_source_id=%d\n" % \
-          (gsi, level, irq_source_id),
 
 
 def kvm__kvm_userspace_exit(event_name, context, common_cpu,
                             common_secs, common_nsecs, common_pid, common_comm,
                             reason, errno):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "reason=%s, errno=%d\n" % \
-          (symbol_str("kvm__kvm_userspace_exit", "reason", reason), errno),
 
 
 def kvm__kvm_track_tsc(event_name, context, common_cpu,
                        common_secs, common_nsecs, common_pid, common_comm,
                        vcpu_id, nr_vcpus_matched_tsc, online_vcpus, use_master_clock,
                        host_clock):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "vcpu_id=%u, nr_vcpus_matched_tsc=%u, online_vcpus=%u, " \
-          "use_master_clock=%u, host_clock=%s\n" % \
-          (vcpu_id, nr_vcpus_matched_tsc, online_vcpus, use_master_clock,
-
-           symbol_str("kvm__kvm_track_tsc", "host_clock", host_clock)),
 
 
 def kvm__kvm_update_master_clock(event_name, context, common_cpu,
                                  common_secs, common_nsecs, common_pid, common_comm,
                                  use_master_clock, host_clock, offset_matched):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "use_master_clock=%u, host_clock=%s, offset_matched=%u\n" % \
-          (use_master_clock,
-           symbol_str("kvm__kvm_update_master_clock", "host_clock", host_clock),
-           offset_matched),
 
 
 def kvm__kvm_write_tsc_offset(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               vcpu_id, previous_tsc_offset, next_tsc_offset):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "vcpu_id=%u, previous_tsc_offset=%u, next_tsc_offset=%u\n" % \
-          (vcpu_id, previous_tsc_offset, next_tsc_offset),
 
 
 def kvm__vcpu_match_mmio(event_name, context, common_cpu,
                          common_secs, common_nsecs, common_pid, common_comm,
                          gva, gpa, write, gpa_match):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "gva=%u, gpa=%u, write=%u, " \
-          "gpa_match=%u\n" % \
-          (gva, gpa, write, gpa_match),
 
 
 def kvm__kvm_emulate_insn(event_name, context, common_cpu,
                           common_secs, common_nsecs, common_pid, common_comm,
                           rip, csbase, len, insn,
                           flags, failed):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "rip=%u, csbase=%u, len=%u, " \
-          "insn=%s, flags=%s, failed=%u\n" % \
-          (rip, csbase, len, insn,
-
-           symbol_str("kvm__kvm_emulate_insn", "flags", flags),
-           failed),
 
 
 def kvm__kvm_skinit(event_name, context, common_cpu,
                     common_secs, common_nsecs, common_pid, common_comm,
                     rip, slb):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "rip=%u, slb=%u\n" % \
-          (rip, slb),
 
 
 def kvm__kvm_invlpga(event_name, context, common_cpu,
                      common_secs, common_nsecs, common_pid, common_comm,
                      rip, asid, address):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "rip=%u, asid=%d, address=%u\n" % \
-          (rip, asid, address),
 
 
 def kvm__kvm_nested_intr_vmexit(event_name, context, common_cpu,
                                 common_secs, common_nsecs, common_pid, common_comm,
                                 rip):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "rip=%u\n" % \
-          (rip),
 
 
 def kvm__kvm_nested_vmexit_inject(event_name, context, common_cpu,
                                   common_secs, common_nsecs, common_pid, common_comm,
                                   exit_code, exit_info1, exit_info2, exit_int_info,
                                   exit_int_info_err, isa):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "exit_code=%s, exit_info1=%u, exit_info2=%u, " \
-          "exit_int_info=%u, exit_int_info_err=%u, isa=%u\n" % \
-          (symbol_str("kvm__kvm_nested_vmexit_inject", "exit_code", exit_code), exit_info1, exit_info2, exit_int_info,
-           exit_int_info_err, isa),
 
 
 def kvm__kvm_nested_vmexit(event_name, context, common_cpu,
                            common_secs, common_nsecs, common_pid, common_comm,
                            rip, exit_code, exit_info1, exit_info2,
                            exit_int_info, exit_int_info_err, isa):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "rip=%u, exit_code=%s, exit_info1=%u, " \
-          "exit_info2=%u, exit_int_info=%u, exit_int_info_err=%u, " \
-          "isa=%u\n" % \
-          (rip,
-           symbol_str("kvm__kvm_nested_vmexit", "exit_code", exit_code),
-           exit_info1, exit_info2, exit_int_info, exit_int_info_err, isa),
 
 
 def kvm__kvm_nested_intercepts(event_name, context, common_cpu,
                                common_secs, common_nsecs, common_pid, common_comm,
                                cr_read, cr_write, exceptions, intercept):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "cr_read=%u, cr_write=%u, exceptions=%u, " \
-          "intercept=%u\n" % \
-          (cr_read, cr_write, exceptions, intercept),
 
 
 def kvm__kvm_nested_vmrun(event_name, context, common_cpu,
                           common_secs, common_nsecs, common_pid, common_comm,
                           rip, vmcb, nested_rip, int_ctl,
                           event_inj, npt):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "rip=%u, vmcb=%u, nested_rip=%u, " \
-          "int_ctl=%u, event_inj=%u, npt=%u\n" % \
-          (rip, vmcb, nested_rip, int_ctl,
-           event_inj, npt),
 
 
 def kvm__kvm_pv_eoi(event_name, context, common_cpu,
                     common_secs, common_nsecs, common_pid, common_comm,
                     apicid, vector):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "apicid=%u, vector=%d\n" % \
-          (apicid, vector),
 
 
 def kvm__kvm_eoi(event_name, context, common_cpu,
                  common_secs, common_nsecs, common_pid, common_comm,
                  apicid, vector):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "apicid=%u, vector=%d\n" % \
-          (apicid, vector),
 
 
 def kvm__kvm_apic_accept_irq(event_name, context, common_cpu,
                              common_secs, common_nsecs, common_pid, common_comm,
                              apicid, dm, tm, vec,
                              coalesced):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "apicid=%u, dm=%s, tm=%u, " \
-          "vec=%u, coalesced=%u\n" % \
-          (apicid,
-           symbol_str("kvm__kvm_apic_accept_irq", "dm", dm),
-           tm, vec, coalesced),
 
 
 def kvm__kvm_apic_ipi(event_name, context, common_cpu,
                       common_secs, common_nsecs, common_pid, common_comm,
                       icr_low, dest_id):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "icr_low=%s, dest_id=%u\n" % \
-          (symbol_str("kvm__kvm_apic_ipi", "icr_low", icr_low), dest_id),
 
 
 def kvm__kvm_pic_set_irq(event_name, context, common_cpu,
                          common_secs, common_nsecs, common_pid, common_comm,
                          chip, pin, elcr, imr,
                          coalesced):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "chip=%u, pin=%u, elcr=%u, " \
-          "imr=%u, coalesced=%u\n" % \
-          (chip, pin, elcr, imr,
-           coalesced),
 
 
 def kvm__kvm_apic(event_name, context, common_cpu,
                   common_secs, common_nsecs, common_pid, common_comm,
                   rw, reg, val):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "rw=%u, reg=%s, val=%u\n" % \
-          (rw,
-           symbol_str("kvm__kvm_apic", "reg", reg),
-           val),
 
 
 def kvm__kvm_cr(event_name, context, common_cpu,
                 common_secs, common_nsecs, common_pid, common_comm,
                 rw, cr, val):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "rw=%u, cr=%u, val=%u\n" % \
-          (rw, cr, val),
 
 
 def kvm__kvm_msr(event_name, context, common_cpu,
                  common_secs, common_nsecs, common_pid, common_comm,
                  write, ecx, data, exception):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "write=%u, ecx=%u, data=%u, " \
-          "exception=%u\n" % \
-          (write, ecx, data, exception),
 
 
 def kvm__kvm_page_fault(event_name, context, common_cpu,
                         common_secs, common_nsecs, common_pid, common_comm,
                         fault_address, error_code):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "fault_address=%u, error_code=%u\n" % \
-          (fault_address, error_code),
 
 
 def kvm__kvm_inj_exception(event_name, context, common_cpu,
                            common_secs, common_nsecs, common_pid, common_comm,
                            exception, has_error, error_code):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "exception=%s, has_error=%u, error_code=%u\n" % \
-          (symbol_str("kvm__kvm_inj_exception", "exception", exception), has_error, error_code),
 
 
 def kvm__kvm_inj_virq(event_name, context, common_cpu,
                       common_secs, common_nsecs, common_pid, common_comm,
                       irq):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "irq=%u\n" % \
-          (irq),
 
 
 def kvm__kvm_cpuid(event_name, context, common_cpu,
                    common_secs, common_nsecs, common_pid, common_comm,
                    function, rax, rbx, rcx,
                    rdx):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "function=%u, rax=%u, rbx=%u, " \
-          "rcx=%u, rdx=%u\n" % \
-          (function, rax, rbx, rcx,
-           rdx),
 
 
 def kvm__kvm_pio(event_name, context, common_cpu,
                  common_secs, common_nsecs, common_pid, common_comm,
                  rw, port, size, count):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "rw=%u, port=%u, size=%u, " \
-          "count=%u\n" % \
-          (rw, port, size, count),
 
 
 def kvm__kvm_hv_hypercall(event_name, context, common_cpu,
                           common_secs, common_nsecs, common_pid, common_comm,
                           rep_cnt, rep_idx, ingpa, outgpa,
                           code, fast):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "rep_cnt=%u, rep_idx=%u, ingpa=%u, " \
-          "outgpa=%u, code=%u, fast=%u\n" % \
-          (rep_cnt, rep_idx, ingpa, outgpa,
-           code, fast),
 
 
 def kvm__kvm_hypercall(event_name, context, common_cpu,
                        common_secs, common_nsecs, common_pid, common_comm,
                        nr, a0, a1, a2,
                        a3):
-    print_header(event_name, common_cpu, common_secs, common_nsecs,
-                 common_pid, common_comm)
+    drop_event(event_name)
 
-    print "nr=%u, a0=%u, a1=%u, " \
-          "a2=%u, a3=%u\n" % \
-          (nr, a0, a1, a2,
-           a3),
 
 
 def trace_unhandled(event_name, context, event_fields_dict):
     print ' '.join(['%s=%s' % (k, str(v)) for k, v in sorted(event_fields_dict.items())])
 
 
-def print_header(event_name, cpu, secs, nsecs, pid, comm):
-    print "%-20s %5u %05u.%09u %8u %-20s " % \
-          (event_name, cpu, secs, nsecs, pid, comm),
