@@ -279,7 +279,7 @@ parser = OptionParser(usage="usage: %prog [options] <cdict_file>")
 
 parser.add_option("-t", "--tid",
                   dest="tid",
-                  help="show thread context switch heat map"
+                  help="show thread context switch heat map (use numeric tid or task name)"
                   )
 parser.add_option("--successors-of",
                   dest="successor_of_tid",
@@ -362,7 +362,7 @@ if options.show_tids:
 elif options.cpu_loc:
     show_cpu_locality(df, options.cpu_loc)
 elif options.tid:
-    show_tid_heatmap(df, int(options.tid))
+    show_tid_heatmap(df, options.tid)
 elif options.kvm_exits:
     show_kvm_heatmap(df, int(options.kvm_exits))
 elif options.successor_of_tid:

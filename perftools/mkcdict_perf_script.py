@@ -147,10 +147,10 @@ def get_final_name(tid, name):
     # check if it is a kvm thread from the look of the name
     libvirt_name, uuid, thread_type = decode_pid(tid)
     if libvirt_name:
-        # append the thread type to the name
-        name += '.' + thread_type
         if plugin_convert_name:
             name = plugin_convert_name(name, tid, libvirt_name, uuid, thread_type)
+        # append the thread type to the name
+        name += '.' + thread_type
 
     name_by_tid[tid] = name
     return name

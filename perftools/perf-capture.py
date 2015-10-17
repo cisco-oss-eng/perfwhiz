@@ -30,6 +30,13 @@ perf_binary = 'perf'
 #
 
 def get_curated_latency_table(table):
+    try:
+        perf_formatter.init(opts)
+    except ImportError:
+        print 'Using default qemu task name mapping (no plugin found)'
+    except ValueError:
+        print 'Using default qemu task name mapping (OpenStack credentials not found, use -r or env variables)'
+
     lines = table.split('\n')
     results = []
     for line in lines:
@@ -59,7 +66,7 @@ def get_curated_latency_table(table):
         results.append(line)
     return '\n'.join(results)
 
-def perf_record(opts, cs, kvm):
+def perf_record(opts, cs=True, kvm=True):
     perf_cmd = [perf_binary, 'sched', 'record']
     if cs:
         perf_cmd += ['-e', 'sched:*']
@@ -72,23 +79,6 @@ def perf_record(opts, cs, kvm):
         print 'You might need to run this script as root or with sudo'
         return False
     return True
-
-def capture_stats(opts, cs=False, kvm=False):
-    if perf_record(opts, cs, kvm):
-        if cs:
-            # perf sched latency -s switch
-            cmd = [perf_binary, 'sched', 'latency', '-s', 'switch']
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=None)
-            results, errors = process.communicate()
-            if errors:
-                print 'Error displaying scheduling latency'
-            else:
-                # curate the process names before displaying
-                print get_curated_latency_table(results)
-        if kvm:
-            rc = subprocess.call([perf_binary, 'kvm', 'stat', 'report'])
-            if rc:
-                print 'Error displaying kvm stats'
 
 
 def _kvm_entry(cpu, secs, nsecs, pid, comm, args):
@@ -197,16 +187,31 @@ def decode_txt():
                 print 'cannot decode:' + line
         sys.exit(0)
 
-def capture_traces(cdict_filename, opts, kvm_events=False):
-    # If it is a .data file we either need a python enabled perf tool (if available)
-    # or we need to generate the text file from the perf tool and parse it (much slower)
-    if cdict_filename.lower() == "none":
-        filename = None
-        cdict_filename = None
+def capture_stats(opts, stats_filename):
+    # perf sched latency -s switch
+    cmd = [perf_binary, 'sched', 'latency', '-s', 'switch']
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=None)
+    results, errors = process.communicate()
+    if errors:
+        print 'Error displaying scheduling latency'
     else:
-        filename, extension = os.path.splitext(cdict_filename)
-        if extension != 'cdict':
-            cdict_filename += '.cdict'
+        # curate the process names before displaying
+        results = get_curated_latency_table(results)
+    with open(stats_filename, 'w') as ff:
+        ff.write(results)
+
+        # need to let the results to be flushed out
+        ff.flush()
+
+        rc = subprocess.call([perf_binary, 'kvm', 'stat', 'report'], stdout=ff, stderr=ff)
+        if rc:
+            print 'Error displaying kvm stats'
+        else:
+            print 'Stats captured in ' + stats_filename
+    os.chmod(stats_filename, 0664)
+
+
+def capture(opts, run_name):
 
     # If this is set we skip the capture
     perf_data_filename = opts.perf_data
@@ -214,22 +219,35 @@ def capture_traces(cdict_filename, opts, kvm_events=False):
         if not os.path.isfile(perf_data_filename):
             print 'Cannot find perf data file: ' + opts.perf_data
             return
+        print 'Skipping capture, using ' + perf_data_filename
+
     else:
         # need to capture traces
-        if not perf_record(opts, True, kvm_events):
+        print 'Capturing perf data for %d seconds...' % (opts.seconds)
+        if not perf_record(opts):
             return
         perf_data_filename = 'perf.data'
-        print '   Traces captured in perf.data'
+        print 'Traces captured in perf.data'
+
+    # collect stats
+    if opts.all or opts.stats:
+        if opts.perf_data:
+            print 'Stats capture from provided perf data file not supported'
+        else:
+            stats_filename = run_name + ".stats"
+            capture_stats(opts, stats_filename)
 
     # create cdict from the perf data file
-    if cdict_filename:
+
+    if opts.all or opts.switches:
         try:
+            cdict_filename = run_name + '.cdict'
             # try to run this script through the perf tool itself as it is faster
             rc = subprocess.call([perf_binary, 'script', '-s', 'mkcdict_perf_script.py', '-i', perf_data_filename])
             if rc:
                 print '   perf is not built with the python scripting extension, parsing text file (slower)...'
-                text_filename = filename + '.txt'
-                print '   generating text traces to file %s...' % (text_filename)
+                text_filename = run_name + '.txt'
+                print '   Generating text traces to file %s...' % (text_filename)
                 with open(text_filename, 'w') as ff:
                     rc = subprocess.call([perf_binary, 'script', '-i', perf_data_filename],
                                          stdout=ff, stderr=subprocess.PIPE)
@@ -238,41 +256,33 @@ def capture_traces(cdict_filename, opts, kvm_events=False):
             else:
                 # success result is in perf.cdict, so need to rename it
                 os.rename('perf.cdict', cdict_filename)
-                print '   Created file: ' + cdict_filename
+                os.chmod(cdict_filename, 0664)
+                print 'Created file: ' + cdict_filename
         except OSError:
-            print 'perf does not seems to be installed - exiting...'
-            sys.exit(1)
-    else:
-        print '   Skipping creation of cdict file'
+            print 'Error: perf does not seems to be installed'
 
 if __name__ == '__main__':
-    parser = OptionParser(usage="usage: %prog [options]")
+    parser = OptionParser(usage="usage: %prog [options] <run-name>")
 
-    parser.add_option('--cs-stats', dest='cs_stats',
+    parser.add_option('--stats', dest='stats',
                       action='store_true',
-                      help='display curated context switches stats to stdout')
+                      default=False,
+                      help='capture context switches and kvm exit stats to <run-name>.stats')
 
-    parser.add_option('--kvm-stats', dest='kvm_stats',
+    parser.add_option('--switches', dest='switches',
                       action='store_true',
-                      help='display kvm exit stats to stdout')
+                      default=False,
+                      help='capture detailed context switch and kvm traces and create <run-name>.cdict if not none')
 
-    parser.add_option('--all-stats', dest='all_stats',
+    parser.add_option('--all', dest='all',
                       action='store_true',
-                      help='display all stats to stdout')
-
-    parser.add_option('--switches', dest='cs_traces',
-                      action='store',
-                      help='capture detailed context switch traces and create cdict if not none',
-                      metavar='<cdict file or "none">')
-
-    parser.add_option('--kvm-switches', dest='cs_kvm_traces',
-                      action='store',
-                      help='capture detailed context switch and kvm traces and create cdict if not none',
-                      metavar='<cdict file or "none">')
+                      default=False,
+                      help='capture all traces and stats into <run-name>.cdict and <run-name>.stats')
 
     parser.add_option('-s', '--sleep', dest='seconds',
                       action='store',
                       default=1,
+                      type="int",
                       help='capture duration in seconds, defaults to 1 second',
                       metavar='<seconds>')
 
@@ -298,30 +308,37 @@ if __name__ == '__main__':
 
     (opts, args) = parser.parse_args()
 
+    if len(args) != 1:
+        print 'This script requires 1 argument for the run name (any valid file name without extension)'
+        sys.exit(0)
+
+    CFG_FILE = '.mkcdict.cfg'
+
+    # check if there is a config file in the current directory
+    if os.path.isfile(CFG_FILE):
+        # load options from the config file if they are set to None
+        print 'Loading options from ' + CFG_FILE
+        opt_re = re.compile(' *(\w*) *[=:]+ *([\w/\-\.]*)')
+        with open(CFG_FILE, 'r') as ff:
+            for line in ff:
+                m = opt_re.match(line)
+                if m:
+                    cfg_name = m.group(1)
+                    try:
+                        if getattr(opts, cfg_name) == None:
+                            setattr(opts, cfg_name, m.group(2))
+                    except AttributeError:
+                        pass
+
     #decode_txt()
 
     if opts.perf_data and not os.path.isfile(opts.perf_data):
         print 'Cannot find perf data file: ' + opts.perf_data
         sys.exit(1)
 
-    try:
-        perf_formatter.init(opts)
-    except ImportError:
-        print 'Using default qemu task name mapping (no plugin found)'
-    except ValueError:
-        print 'Using default qemu task name mapping (OpenStack credentials not found, use -r or env variables)'
-
     if opts.perf:
         perf_binary = opts.perf
+        print 'Overriding perf binary with: ' + perf_binary
 
-    if opts.cs_traces:
-        capture_traces(opts.cs_traces, opts)
-    elif opts.cs_kvm_traces:
-        capture_traces(opts.cs_kvm_traces, opts, kvm_events=True)
-    elif opts.all_stats:
-        capture_stats(opts, cs=True, kvm=True)
-    else:
-        if opts.cs_stats:
-            capture_stats(opts, cs=True)
-        if opts.kvm_stats:
-            capture_stats(opts, kvm=True)
+    capture(opts, args[0])
+
