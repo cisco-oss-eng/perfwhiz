@@ -323,12 +323,10 @@ def sched__sched_process_exec(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def sched__sched_process_fork(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               parent_comm, parent_pid, child_comm, child_pid):
     drop_event(event_name)
-
 
 
 def sched__sched_process_wait(event_name, context, common_cpu,
@@ -337,12 +335,10 @@ def sched__sched_process_wait(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def sched__sched_wait_task(event_name, context, common_cpu,
                            common_secs, common_nsecs, common_pid, common_comm,
                            comm, pid, prio):
     drop_event(event_name)
-
 
 
 def sched__sched_process_exit(event_name, context, common_cpu,
@@ -424,12 +420,10 @@ def kvm__kvm_mmio(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_ack_irq(event_name, context, common_cpu,
                      common_secs, common_nsecs, common_pid, common_comm,
                      irqchip, pin):
     drop_event(event_name)
-
 
 
 def kvm__kvm_msi_set_irq(event_name, context, common_cpu,
@@ -438,12 +432,10 @@ def kvm__kvm_msi_set_irq(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_ioapic_set_irq(event_name, context, common_cpu,
                             common_secs, common_nsecs, common_pid, common_comm,
                             e, pin, coalesced):
     drop_event(event_name)
-
 
 
 def kvm__kvm_set_irq(event_name, context, common_cpu,
@@ -452,12 +444,10 @@ def kvm__kvm_set_irq(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_userspace_exit(event_name, context, common_cpu,
                             common_secs, common_nsecs, common_pid, common_comm,
                             reason, errno):
     drop_event(event_name)
-
 
 
 def kvm__kvm_track_tsc(event_name, context, common_cpu,
@@ -467,12 +457,10 @@ def kvm__kvm_track_tsc(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_update_master_clock(event_name, context, common_cpu,
                                  common_secs, common_nsecs, common_pid, common_comm,
                                  use_master_clock, host_clock, offset_matched):
     drop_event(event_name)
-
 
 
 def kvm__kvm_write_tsc_offset(event_name, context, common_cpu,
@@ -481,12 +469,10 @@ def kvm__kvm_write_tsc_offset(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__vcpu_match_mmio(event_name, context, common_cpu,
                          common_secs, common_nsecs, common_pid, common_comm,
                          gva, gpa, write, gpa_match):
     drop_event(event_name)
-
 
 
 def kvm__kvm_emulate_insn(event_name, context, common_cpu,
@@ -496,12 +482,10 @@ def kvm__kvm_emulate_insn(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_skinit(event_name, context, common_cpu,
                     common_secs, common_nsecs, common_pid, common_comm,
                     rip, slb):
     drop_event(event_name)
-
 
 
 def kvm__kvm_invlpga(event_name, context, common_cpu,
@@ -510,12 +494,10 @@ def kvm__kvm_invlpga(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_nested_intr_vmexit(event_name, context, common_cpu,
                                 common_secs, common_nsecs, common_pid, common_comm,
                                 rip):
     drop_event(event_name)
-
 
 
 def kvm__kvm_nested_vmexit_inject(event_name, context, common_cpu,
@@ -525,7 +507,6 @@ def kvm__kvm_nested_vmexit_inject(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_nested_vmexit(event_name, context, common_cpu,
                            common_secs, common_nsecs, common_pid, common_comm,
                            rip, exit_code, exit_info1, exit_info2,
@@ -533,12 +514,10 @@ def kvm__kvm_nested_vmexit(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_nested_intercepts(event_name, context, common_cpu,
                                common_secs, common_nsecs, common_pid, common_comm,
                                cr_read, cr_write, exceptions, intercept):
     drop_event(event_name)
-
 
 
 def kvm__kvm_nested_vmrun(event_name, context, common_cpu,
@@ -548,19 +527,16 @@ def kvm__kvm_nested_vmrun(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_pv_eoi(event_name, context, common_cpu,
                     common_secs, common_nsecs, common_pid, common_comm,
                     apicid, vector):
     drop_event(event_name)
 
 
-
 def kvm__kvm_eoi(event_name, context, common_cpu,
                  common_secs, common_nsecs, common_pid, common_comm,
                  apicid, vector):
     drop_event(event_name)
-
 
 
 def kvm__kvm_apic_accept_irq(event_name, context, common_cpu,
@@ -570,12 +546,10 @@ def kvm__kvm_apic_accept_irq(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_apic_ipi(event_name, context, common_cpu,
                       common_secs, common_nsecs, common_pid, common_comm,
                       icr_low, dest_id):
     drop_event(event_name)
-
 
 
 def kvm__kvm_pic_set_irq(event_name, context, common_cpu,
@@ -585,12 +559,10 @@ def kvm__kvm_pic_set_irq(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_apic(event_name, context, common_cpu,
                   common_secs, common_nsecs, common_pid, common_comm,
                   rw, reg, val):
     drop_event(event_name)
-
 
 
 def kvm__kvm_cr(event_name, context, common_cpu,
@@ -599,12 +571,10 @@ def kvm__kvm_cr(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_msr(event_name, context, common_cpu,
                  common_secs, common_nsecs, common_pid, common_comm,
                  write, ecx, data, exception):
     drop_event(event_name)
-
 
 
 def kvm__kvm_page_fault(event_name, context, common_cpu,
@@ -613,19 +583,16 @@ def kvm__kvm_page_fault(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_inj_exception(event_name, context, common_cpu,
                            common_secs, common_nsecs, common_pid, common_comm,
                            exception, has_error, error_code):
     drop_event(event_name)
 
 
-
 def kvm__kvm_inj_virq(event_name, context, common_cpu,
                       common_secs, common_nsecs, common_pid, common_comm,
                       irq):
     drop_event(event_name)
-
 
 
 def kvm__kvm_cpuid(event_name, context, common_cpu,
@@ -635,12 +602,10 @@ def kvm__kvm_cpuid(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_pio(event_name, context, common_cpu,
                  common_secs, common_nsecs, common_pid, common_comm,
                  rw, port, size, count):
     drop_event(event_name)
-
 
 
 def kvm__kvm_hv_hypercall(event_name, context, common_cpu,
@@ -650,7 +615,6 @@ def kvm__kvm_hv_hypercall(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def kvm__kvm_hypercall(event_name, context, common_cpu,
                        common_secs, common_nsecs, common_pid, common_comm,
                        nr, a0, a1, a2,
@@ -658,8 +622,5 @@ def kvm__kvm_hypercall(event_name, context, common_cpu,
     drop_event(event_name)
 
 
-
 def trace_unhandled(event_name, context, event_fields_dict):
     print ' '.join(['%s=%s' % (k, str(v)) for k, v in sorted(event_fields_dict.items())])
-
-

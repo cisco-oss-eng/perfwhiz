@@ -4,3 +4,6 @@
 *.egg
 *.egg-info
 *.pyc
+AUTHORS
+ChangeLog
+.cache

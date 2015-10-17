@@ -367,4 +367,3 @@ elif options.kvm_exits:
     show_kvm_heatmap(df, int(options.kvm_exits))
 elif options.successor_of_tid:
     show_successors(df, int(options.successor_of_tid))
-
