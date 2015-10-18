@@ -17,6 +17,7 @@ import pandas
 
 from bokeh.plotting import figure, output_file, show
 from bokeh.models.sources import ColumnDataSource
+from bokeh.palettes import Spectral6
 from pandas import DataFrame
 
 # Global variables
@@ -90,10 +91,7 @@ KVM_EXIT_REASONS = [
 GREEN = "#5ab738"
 RED = "#f22c40"
 
-DEFAULT_PALETTE = [GREEN, RED, "#407ee7", "#df5320", "#00ad9c", "#c33ff3"]
-
-
-def cycle_colors(chunk, palette=DEFAULT_PALETTE):
+def cycle_colors(chunk, palette=Spectral6):
     """ Build a color list just cycling through a given palette.
 
     Args:
@@ -112,16 +110,45 @@ def cycle_colors(chunk, palette=DEFAULT_PALETTE):
 
     return colors
 
-def output_html(chart_type, tid_list=[]):
+def output_html(chart_type, task_list=[]):
     filename = html_file + '_' + chart_type
-    for tid in tid_list:
-        filename += '_' + str(tid)
+    for task in task_list:
+
+        filename += '_' + task.replace(':', '.')
     filename += '.html'
     output_file(filename)
     print('Saved to ' + filename)
 
-def show_tid_heatmap(df, tid):
-    df = df[df['pid'] == tid]
+def get_full_task_name(df, task):
+    # if task is a number it is considered to be a pid ID
+    # if text it is a task name
+    try:
+        tid = int(task)
+        # tid given
+        df = df[df['pid'] == tid]
+        task = None
+        # get the task name from the tid
+    except ValueError:
+        # task given: find corresponding tid
+        df = df[df['task_name'] == task]
+        tid = 0
+
+    if df.empty:
+        print 'No selection matching the task ' + task
+        return (None, None)
+    # fill in the missing information
+    if not tid:
+        tid = df['pid'].iloc[0]
+    if not task:
+        task = df['task_name'].iloc[0]
+    task = task + ':' + str(tid)
+    return (df, task)
+
+def show_task_heatmap(df, task):
+    df, task = get_full_task_name(df, task)
+    if not task:
+        return
+
     # these are the 2 main events to show
     legend_map = {
         'sched__sched_stat_sleep': (RED, 'wakeup from sleep (y=sleep time)'),
@@ -134,7 +161,7 @@ def show_tid_heatmap(df, tid):
     p.legend.orientation = "bottom_right"
     p.xaxis.axis_label_text_font_size = "10pt"
     p.yaxis.axis_label_text_font_size = "10pt"
-    p.title = "Context switches tid %d" % (tid)
+    p.title = "Context switches " + task
     p.ygrid.minor_grid_line_color = 'navy'
     p.ygrid.minor_grid_line_alpha = 0.1
 
@@ -147,7 +174,7 @@ def show_tid_heatmap(df, tid):
                  legend=legend_text)
 
     # specify how to output the plot(s)
-    output_html('thm', [tid])
+    output_html('thm', [task])
 
     # display the figure
     show(p)
@@ -172,11 +199,13 @@ def show_exit_type_count(df_all_exits, df_last_exits):
     res_last = convert_exit_df(df_last_exits, 'last exit')
     res = pandas.concat([res_all, res_last], axis=1)
     res.fillna(0, inplace=True)
-    res.sort('total count', inplace=True, ascending=False)
+    res.sort_values('total count', inplace=True, ascending=False)
     print res
 
-def show_kvm_heatmap(df, tid):
-    df = df[df['pid'] == tid]
+def show_kvm_heatmap(df, task):
+    df, task = get_full_task_name(df, task)
+    if not task:
+        return
     # these are the 2 main events to show
     legend_map = {
         'kvm_entry': (RED, 'vcpu not running (y=kvm+sleep time)'),
@@ -189,7 +218,7 @@ def show_kvm_heatmap(df, tid):
     p.legend.orientation = "bottom_right"
     p.xaxis.axis_label_text_font_size = "10pt"
     p.yaxis.axis_label_text_font_size = "10pt"
-    p.title = "KVM entries and exits tid %d" % (tid)
+    p.title = "KVM entries and exits for " + task
     p.ygrid.minor_grid_line_color = 'navy'
     p.ygrid.minor_grid_line_alpha = 0.1
     for event in legend_map:
@@ -205,7 +234,7 @@ def show_kvm_heatmap(df, tid):
                  legend=legend_text)
 
     # specify how to output the plot(s)
-    output_html('kvm', [tid])
+    output_html('kvm', [task])
 
     # display the figure
     show(p)
@@ -229,11 +258,18 @@ def show_kvm_heatmap(df, tid):
 
     show_exit_type_count(dfexits, df)
 
+def get_locality_size(count):
+    if count < 100:
+        return 10
+    if count < 500:
+        return 8
+    return 6
 
-def show_cpu_locality(df, tids):
-    tid_list = [int(x) for x in tids]
-    df = df[df['pid'].isin(tid_list)]
+def show_cpu_locality(df, task_re):
+
     df = df[df['event'] == 'sched__sched_stat_runtime']
+    df = df[df['task_name'].str.match(task_re)]
+    task_list = pandas.unique(df.task_name.ravel())
 
     p = figure(plot_width=1000, plot_height=800)
     p.xaxis.axis_label = 'time (usecs)'
@@ -243,17 +279,20 @@ def show_cpu_locality(df, tids):
     p.yaxis.axis_label_text_font_size = "10pt"
     p.title = "Core locality"
 
-    color_list = cycle_colors(tids)
+    color_list = cycle_colors(task_list)
 
-    for tid, color in zip(tid_list, color_list):
-        dfe = df[df['pid'] == tid]
-        legend_text = 'tid %d (%d)' % (tid, len(dfe))
-        p.circle('usecs', 'cpu', source=ColumnDataSource(dfe), size=6, color=color,
+    for task, color in zip(task_list, color_list):
+        dfe = df[df['task_name'] == task]
+        tid = dfe['pid'].iloc[0]
+        count = len(dfe)
+        legend_text = '%s:%d (%d)' % (task, tid, count)
+        p.circle('usecs', 'cpu', source=ColumnDataSource(dfe),
+                 size=get_locality_size(count), color=color,
                  alpha=0.3,
                  legend=legend_text)
 
     # specify how to output the plot(s)
-    output_html('cpuloc', tid_list)
+    output_html('cpuloc', task_list)
 
     # display the figure
     show(p)
@@ -277,8 +316,9 @@ def show_successors(df, tid):
 
 parser = OptionParser(usage="usage: %prog [options] <cdict_file>")
 
-parser.add_option("-t", "--tid",
-                  dest="tid",
+parser.add_option("-t", "--task",
+                  dest="task",
+                  metavar="task ID or name",
                   help="show thread context switch heat map (use numeric tid or task name)"
                   )
 parser.add_option("--successors-of",
@@ -293,13 +333,13 @@ parser.add_option("--show-tids",
                   )
 parser.add_option("--cpu-locality",
                   dest="cpu_loc",
-                  action="append",
-                  metavar="tid",
-                  help="show cpu locality chart for given threads"
+                  action="store",
+                  metavar="task name (regex)",
+                  help="show cpu locality chart for tasks with matching name"
                   )
 parser.add_option("--kvm-exits",
                   dest="kvm_exits",
-                  metavar="tid",
+                  metavar="task ID or name",
                   help="show thread kvm exits heat map"
                   )
 parser.add_option("-c", "--cap",
@@ -327,6 +367,7 @@ df = DataFrame(  {'AAA': [0, 0, 0, 1,2,3,4,5,6,7,8,9,10],
 show_last_exit_reasons_before_switches(df, 5)
 sys.exit(0)
 '''
+
 
 if options.from_time:
     from_time = int(options.from_time) * 1000
@@ -357,13 +398,14 @@ if cap_time:
 
 if options.show_tids:
     res = df.groupby(['pid', 'task_name']).size()
-    res.sort(ascending=False)
+    res.sort_values(ascending=False, inplace=True)
+    print 'List of tids and task names sorted by context switches and kvm event count'
     print res
 elif options.cpu_loc:
     show_cpu_locality(df, options.cpu_loc)
-elif options.tid:
-    show_tid_heatmap(df, options.tid)
+elif options.task:
+    show_task_heatmap(df, options.task)
 elif options.kvm_exits:
-    show_kvm_heatmap(df, int(options.kvm_exits))
+    show_kvm_heatmap(df, options.kvm_exits)
 elif options.successor_of_tid:
     show_successors(df, int(options.successor_of_tid))

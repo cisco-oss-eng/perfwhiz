@@ -162,6 +162,7 @@ def decode_perf_text(filename):
                     pass
         trace_end()
 
+'''
 def decode_txt():
     #  qemu-system-x86 27637 [006] 622048.897809: kvm:kvm_entry: vcpu 0
     trace_re = re.compile(' *([\w\-]*) *(\d*) \[(\d*)\] (\d*)\.(\d*): \w*:(\w*): ')
@@ -186,6 +187,7 @@ def decode_txt():
             else:
                 print 'cannot decode:' + line
         sys.exit(0)
+'''
 
 def capture_stats(opts, stats_filename):
     # perf sched latency -s switch
@@ -325,12 +327,10 @@ if __name__ == '__main__':
                 if m:
                     cfg_name = m.group(1)
                     try:
-                        if getattr(opts, cfg_name) == None:
+                        if getattr(opts, cfg_name) is None:
                             setattr(opts, cfg_name, m.group(2))
                     except AttributeError:
                         pass
-
-    #decode_txt()
 
     if opts.perf_data and not os.path.isfile(opts.perf_data):
         print 'Cannot find perf data file: ' + opts.perf_data
@@ -341,4 +341,3 @@ if __name__ == '__main__':
         print 'Overriding perf binary with: ' + perf_binary
 
     capture(opts, args[0])
-
