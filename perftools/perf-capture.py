@@ -237,14 +237,14 @@ def capture(opts, run_name):
         if opts.perf_data:
             print 'Stats capture from provided perf data file not supported'
         else:
-            stats_filename = run_name + ".stats"
+            stats_filename = opts.dest_folder + run_name + ".stats"
             capture_stats(opts, stats_filename)
 
     # create cdict from the perf data file
 
     if opts.all or opts.switches:
         try:
-            cdict_filename = run_name + '.cdict'
+            cdict_filename = opts.dest_folder + run_name + '.cdict'
             # try to run this script through the perf tool itself as it is faster
             rc = subprocess.call([perf_binary, 'script', '-s', 'mkcdict_perf_script.py', '-i', perf_data_filename])
             if rc:
@@ -265,7 +265,7 @@ def capture(opts, run_name):
             print 'Error: perf does not seems to be installed'
 
 if __name__ == '__main__':
-    parser = OptionParser(usage="usage: %prog [options] <run-name>")
+    parser = OptionParser(usage="usage: %prog [options] [<run-name>]")
 
     parser.add_option('--stats', dest='stats',
                       action='store_true',
@@ -289,6 +289,12 @@ if __name__ == '__main__':
                       help='capture duration in seconds, defaults to 1 second',
                       metavar='<seconds>')
 
+    parser.add_option('--dest-folder', dest='dest_folder',
+                      action='store',
+                      default='./',
+                      help='destination folder where to store results (default: current folder)',
+                      metavar='<dest folder>')
+
     parser.add_option('--use-perf-data', dest='perf_data',
                       action='store',
                       help='use given perf data file (do not capture)',
@@ -311,9 +317,24 @@ if __name__ == '__main__':
 
     (opts, args) = parser.parse_args()
 
-    if len(args) != 1:
+    if len(args) > 1:
         print 'This script requires 1 argument for the run name (any valid file name without extension)'
         sys.exit(0)
+    if len(args):
+        run_name = args[0]
+    else:
+        run_name = 'perf'
+
+    if not os.path.isdir(opts.dest_folder):
+        print 'Invalid destination folder: ' + opts.dest_folder
+        sys.exit(2)
+    if not opts.dest_folder.endswith('/'):
+        opts.dest_folder += '/'
+
+    # pick at least one command
+    if not (opts.all | opts.switches | opts.stats):
+        print 'Pick at least one of --stats, --switches, --all'
+        sys,exit(3)
 
     CFG_FILE = '.mkcdict.cfg'
 
@@ -341,4 +362,4 @@ if __name__ == '__main__':
         perf_binary = opts.perf
         print 'Overriding perf binary with: ' + perf_binary
 
-    capture(opts, args[0])
+    capture(opts, run_name)
