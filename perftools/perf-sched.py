@@ -5,6 +5,7 @@
 
 
 from optparse import OptionParser
+import os
 import sys
 import itertools
 #
@@ -113,7 +114,6 @@ def cycle_colors(chunk, palette=Spectral6):
 def output_html(chart_type, task_list=[]):
     filename = html_file + '_' + chart_type
     for task in task_list:
-
         filename += '_' + task.replace(':', '.')
     filename += '.html'
     output_file(filename)
@@ -144,7 +144,7 @@ def get_full_task_name(df, task):
     task = task + ':' + str(tid)
     return (df, task)
 
-def show_task_heatmap(df, task):
+def show_task_heatmap(df, task, label):
     df, task = get_full_task_name(df, task)
     if not task:
         return
@@ -155,13 +155,15 @@ def show_task_heatmap(df, task):
         'sched__sched_stat_runtime': (GREEN, 'switched out from cpu (y=run time)')
     }
 
-    p = figure(plot_width=1000, plot_height=800, y_axis_type="log")
+    p = figure(plot_width=1000, plot_height=800, y_axis_type="log",
+               title_text_font_size='14pt',
+               title_text_font_style = "bold")
     p.xaxis.axis_label = 'time (usecs)'
     p.yaxis.axis_label = 'duration (usecs)'
     p.legend.orientation = "bottom_right"
     p.xaxis.axis_label_text_font_size = "10pt"
     p.yaxis.axis_label_text_font_size = "10pt"
-    p.title = "Context switches " + task
+    p.title = "Context switches %s (%s)" % (task, label)
     p.ygrid.minor_grid_line_color = 'navy'
     p.ygrid.minor_grid_line_alpha = 0.1
 
@@ -202,7 +204,7 @@ def show_exit_type_count(df_all_exits, df_last_exits):
     res.sort_values('total count', inplace=True, ascending=False)
     print res
 
-def show_kvm_heatmap(df, task):
+def show_kvm_heatmap(df, task, label):
     df, task = get_full_task_name(df, task)
     if not task:
         return
@@ -212,13 +214,15 @@ def show_kvm_heatmap(df, task):
         'kvm_exit': (GREEN, 'vcpu running (y=vcpu run time)')
     }
 
-    p = figure(plot_width=1000, plot_height=800, y_axis_type="log")
+    p = figure(plot_width=1000, plot_height=800, y_axis_type="log",
+               title_text_font_size='14pt',
+               title_text_font_style = "bold")
     p.xaxis.axis_label = 'time (usecs)'
     p.yaxis.axis_label = 'duration (usecs)'
     p.legend.orientation = "bottom_right"
     p.xaxis.axis_label_text_font_size = "10pt"
     p.yaxis.axis_label_text_font_size = "10pt"
-    p.title = "KVM entries and exits for " + task
+    p.title = "KVM entries and exits for %s (%s)" % (task, label)
     p.ygrid.minor_grid_line_color = 'navy'
     p.ygrid.minor_grid_line_alpha = 0.1
     for event in legend_map:
@@ -265,19 +269,22 @@ def get_locality_size(count):
         return 8
     return 6
 
-def show_cpu_locality(df, task_re):
+def show_cpu_locality(df, task_re, label):
 
     df = df[df['event'] == 'sched__sched_stat_runtime']
     df = df[df['task_name'].str.match(task_re)]
     task_list = pandas.unique(df.task_name.ravel())
 
-    p = figure(plot_width=1000, plot_height=800)
+    p = figure(plot_width=1000, plot_height=800,
+               title_text_font_size='14pt',
+               title_text_font_style = "bold")
+
     p.xaxis.axis_label = 'time (usecs)'
     p.yaxis.axis_label = 'core'
     p.legend.orientation = "bottom_right"
     p.xaxis.axis_label_text_font_size = "10pt"
     p.yaxis.axis_label_text_font_size = "10pt"
-    p.title = "Core locality"
+    p.title = "Core locality (%s)" % (label)
 
     color_list = cycle_colors(task_list)
 
@@ -297,9 +304,10 @@ def show_cpu_locality(df, task_re):
     # display the figure
     show(p)
 
-def show_successors(df, tid):
-    # only look up those switch events related to this tid
-    df = df[df['pid'] == tid]
+def show_successors(df, task, label):
+    df, task = get_full_task_name(df, task)
+    if not task:
+        return
     df = df[df['event'] == 'sched__sched_switch']
     # aggregate all the per core tasks (e.g. swapper/0 -> swapper)
     df['next_comm'] = df['next_comm'].str.replace(r'/.*$', '')
@@ -310,6 +318,7 @@ def show_successors(df, tid):
 
     series_percent.name = 'percent'
     series_count.name = 'count'
+    print 'Successors of %s (%s)' % (task, label)
     print pandas.concat([series_count, series_percent], axis=1)
 
 # ---------------------------------- MAIN -----------------------------------------
@@ -322,8 +331,8 @@ parser.add_option("-t", "--task",
                   help="show thread context switch heat map (use numeric tid or task name)"
                   )
 parser.add_option("--successors-of",
-                  dest="successor_of_tid",
-                  help="show list of successors of given tid"
+                  dest="successor_of_task",
+                  help="show list of successors of given tid or task name"
                   )
 parser.add_option("--show-tids",
                   dest="show_tids",
@@ -341,6 +350,11 @@ parser.add_option("--kvm-exits",
                   dest="kvm_exits",
                   metavar="task ID or name",
                   help="show thread kvm exits heat map"
+                  )
+parser.add_option("--label",
+                  dest="label",
+                  metavar="label",
+                  help="label for the title (defaulst to the cdict file name)"
                   )
 parser.add_option("-c", "--cap",
                   dest="cap_time",
@@ -381,7 +395,11 @@ if not args:
 
 cdict_file = args[0]
 if not cdict_file.endswith('.cdict'):
-    print('input file name must have the .cdict extension')
+    # automatically add the cdict extension if there is one
+    if os.path.isfile(cdict_file + '.cdict'):
+        cdict_file += '.cdict'
+    else:
+        print('input file name must have the .cdict extension')
 
 with open(cdict_file, 'r') as ff:
     cdict = ff.read()
@@ -396,16 +414,19 @@ if from_time:
 if cap_time:
     df = df[df['usecs'] <= cap_time]
 
+if not options.label:
+    options.label = os.path.splitext(os.path.basename(cdict_file))[0]
+
 if options.show_tids:
     res = df.groupby(['pid', 'task_name']).size()
     res.sort_values(ascending=False, inplace=True)
     print 'List of tids and task names sorted by context switches and kvm event count'
     print res
 elif options.cpu_loc:
-    show_cpu_locality(df, options.cpu_loc)
+    show_cpu_locality(df, options.cpu_loc, options.label)
 elif options.task:
-    show_task_heatmap(df, options.task)
+    show_task_heatmap(df, options.task, options.label)
 elif options.kvm_exits:
-    show_kvm_heatmap(df, options.kvm_exits)
-elif options.successor_of_tid:
-    show_successors(df, int(options.successor_of_tid))
+    show_kvm_heatmap(df, options.kvm_exits, options.label)
+elif options.successor_of_task:
+    show_successors(df, options.successor_of_task, options.label)

@@ -67,12 +67,13 @@ def get_curated_latency_table(table):
     return '\n'.join(results)
 
 def perf_record(opts, cs=True, kvm=True):
-    perf_cmd = [perf_binary, 'sched', 'record']
+    perf_cmd = [perf_binary, 'record', '-a']
     if cs:
         perf_cmd += ['-e', 'sched:*']
     if kvm:
         perf_cmd += ['-e', 'kvm:*']
     perf_cmd += ['sleep', str(opts.seconds)]
+    print 'Recording with: ' + ' '.join(perf_cmd)
     rc = subprocess.call(perf_cmd)
     if rc:
         print 'Error recording traces'
