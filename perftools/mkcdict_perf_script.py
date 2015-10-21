@@ -27,7 +27,7 @@ try:
 except ImportError:
     pass
 
-import marshal
+import msgpack
 import zlib
 
 event_name_list = []
@@ -93,7 +93,7 @@ def trace_end():
            'next_pid': next_pid_list,
            'next_comm': next_comm_list}
     print 'End of trace, marshaling and compressing...'
-    compressed = zlib.compress(marshal.dumps(res))
+    compressed = zlib.compress(msgpack.packb(res))
     with open('perf.cdict', 'w') as ff:
         ff.write(compressed)
     print 'Compressed dictionary written to perf.cdict %d entries size=%d bytes' % \
@@ -210,19 +210,28 @@ def sched__sched_wakeup(event_name, context, common_cpu,
                         target_cpu):
     drop_event(event_name)
 
+# A dict of runtime delays accumulated indexed by cpu
+runtime_by_cpu = {}
 
 def sched__sched_stat_runtime(event_name, context, common_cpu,
                               common_secs, common_nsecs, common_pid, common_comm,
                               comm, pid, runtime, vruntime):
-    add_event(event_name, common_cpu, common_secs, common_nsecs, pid, comm, runtime)
-
+    try:
+        runtime_by_cpu[common_cpu] += runtime
+    except KeyError:
+        # the counter is set in on the first sched switch for each cpu
+        pass
 
 def sched__sched_switch(event_name, context, common_cpu,
                         common_secs, common_nsecs, common_pid, common_comm,
                         prev_comm, prev_pid, prev_prio, prev_state,
                         next_comm, next_pid, next_prio):
-    add_event(event_name, common_cpu, common_secs, common_nsecs, prev_pid, prev_comm, 0, next_pid, next_comm)
-
+    try:
+        runtime = runtime_by_cpu[common_cpu]
+        add_event(event_name, common_cpu, common_secs, common_nsecs, prev_pid, prev_comm, runtime, next_pid, next_comm)
+    except KeyError:
+        pass
+    runtime_by_cpu[common_cpu] = 0
 
 def sched__sched_stat_iowait(event_name, context, common_cpu,
                              common_secs, common_nsecs, common_pid, common_comm,

@@ -13,6 +13,7 @@ import itertools
 #
 
 import marshal
+import msgpack
 import zlib
 import pandas
 
@@ -111,6 +112,13 @@ def cycle_colors(chunk, palette=Spectral6):
 
     return colors
 
+def get_disc_size(count):
+    if count < 100:
+        return 10
+    if count < 500:
+        return 8
+    return 6
+
 def output_html(chart_type, task_list=[]):
     filename = html_file + '_' + chart_type
     for task in task_list:
@@ -148,14 +156,14 @@ def show_task_heatmap(df, task, label):
     df, task = get_full_task_name(df, task)
     if not task:
         return
-
     # these are the 2 main events to show
     legend_map = {
         'sched__sched_stat_sleep': (RED, 'wakeup from sleep (y=sleep time)'),
-        'sched__sched_stat_runtime': (GREEN, 'switched out from cpu (y=run time)')
+        # 'sched__sched_stat_runtime': (GREEN, 'switched out from cpu (y=run time)')
+        'sched__sched_switch': (GREEN, 'switched out from cpu (y=run time)')
     }
 
-    p = figure(plot_width=1000, plot_height=800, y_axis_type="log",
+    p = figure(plot_width=1000, plot_height=1000, y_axis_type="log",
                title_text_font_size='14pt',
                title_text_font_style = "bold")
     p.xaxis.axis_label = 'time (usecs)'
@@ -169,9 +177,13 @@ def show_task_heatmap(df, task, label):
 
     for event in legend_map:
         dfe = df[df.event == event]
+        dfe = dfe[dfe['duration'] > 0]
+        count = len(dfe)
         color, legend_text = legend_map[event]
-        legend_text = '%s (%d)' % (legend_text, len(dfe))
-        p.circle('usecs', 'duration', source=ColumnDataSource(dfe), size=5, color=color,
+        legend_text = '%s (%d)' % (legend_text, count)
+        p.circle('usecs', 'duration', source=ColumnDataSource(dfe),
+                 size=get_disc_size(count),
+                 color=color,
                  alpha=0.3,
                  legend=legend_text)
 
@@ -210,8 +222,8 @@ def show_kvm_heatmap(df, task, label):
         return
     # these are the 2 main events to show
     legend_map = {
-        'kvm_entry': (RED, 'vcpu not running (y=kvm+sleep time)'),
-        'kvm_exit': (GREEN, 'vcpu running (y=vcpu run time)')
+        'kvm_exit': (GREEN, 'vcpu running (y=vcpu run time)'),
+        'kvm_entry': (RED, 'vcpu not running (y=kvm+sleep time)')
     }
 
     p = figure(plot_width=1000, plot_height=800, y_axis_type="log",
@@ -225,23 +237,40 @@ def show_kvm_heatmap(df, task, label):
     p.title = "KVM entries and exits for %s (%s)" % (task, label)
     p.ygrid.minor_grid_line_color = 'navy'
     p.ygrid.minor_grid_line_alpha = 0.1
+    accumulated_time = {}
+    total_time = 0
     for event in legend_map:
         dfe = df[df.event == event]
+        count = len(dfe)
         color, legend_text = legend_map[event]
         legend_text = '%s (%d)' % (legend_text, len(dfe))
         # there is bug in bokeh when there are too many circles to draw, nothing is visible
         if len(dfe) > 50000:
             dfe = dfe[:50000]
             print 'Series for %s display truncated to 50000 events' % (event)
-        p.circle('usecs', 'duration', source=ColumnDataSource(dfe), size=5, color=color,
+        p.circle('usecs', 'duration', source=ColumnDataSource(dfe),
+                 size=get_disc_size(count),
+                 color=color,
                  alpha=0.3,
                  legend=legend_text)
+        event_duration = dfe['duration'].sum()
+        accumulated_time[event] = event_duration
+        total_time += event_duration
 
     # specify how to output the plot(s)
     output_html('kvm', [task])
 
     # display the figure
     show(p)
+
+    # Show aggregated time inside VM and inside KVM
+    print
+    print 'Aggregated duration:'
+    for event in legend_map:
+        percent = accumulated_time[event] * 100 / total_time
+        print '   %40s: %9d usec %3d%%' % (legend_map[event][1], accumulated_time[event], percent)
+    print '   %40s: %9d usec %3d%%' % ('Total', total_time, 100)
+    print
 
     # all exit types
     dfexits = df[df.event == 'kvm_exit']
@@ -262,16 +291,9 @@ def show_kvm_heatmap(df, task, label):
 
     show_exit_type_count(dfexits, df)
 
-def get_locality_size(count):
-    if count < 100:
-        return 10
-    if count < 500:
-        return 8
-    return 6
+def show_core_locality(df, task_re, label):
 
-def show_cpu_locality(df, task_re, label):
-
-    df = df[df['event'] == 'sched__sched_stat_runtime']
+    df = df[df['event'] == 'sched__sched_switch']
     df = df[df['task_name'].str.match(task_re)]
     task_list = pandas.unique(df.task_name.ravel())
 
@@ -294,7 +316,7 @@ def show_cpu_locality(df, task_re, label):
         count = len(dfe)
         legend_text = '%s:%d (%d)' % (task, tid, count)
         p.circle('usecs', 'cpu', source=ColumnDataSource(dfe),
-                 size=get_locality_size(count), color=color,
+                 size=get_disc_size(count), color=color,
                  alpha=0.3,
                  legend=legend_text)
 
@@ -321,6 +343,61 @@ def show_successors(df, task, label):
     print 'Successors of %s (%s)' % (task, label)
     print pandas.concat([series_count, series_percent], axis=1)
 
+def convert(df, new_cdict):
+    # Convert the old style cdict (marshal based) to the new cdict format
+    # The new format is msgpack based and fixes the runtime reporting bug
+    # by aggregating all runtime durations into the next switch event
+    # and removing the runtime events
+    # A dict of runtime delays accumulated indexed by cpu
+    runtime_by_cpu = {}
+    # aggregate all runtimes per cpu
+    count = len(df)
+    print 'Conversion in progress...'
+    for index in xrange(count):
+        event_name = df['event'].iloc[index]
+        cpu = df['cpu'].iloc[index]
+        if event_name == 'sched__sched_stat_runtime':
+            try:
+                duration = df['duration'].iloc[index]
+                runtime_by_cpu[cpu] += duration
+            except KeyError:
+                # the counter is set in on the first sched switch for each cpu
+                pass
+        elif event_name == 'sched__sched_switch':
+            try:
+                if df['pid'].iloc[index]:
+                    # don't bother to update swapper (pid=0)
+                    runtime = runtime_by_cpu[cpu]
+                    df.set_value(index, 'duration',runtime)
+            except KeyError:
+                pass
+            runtime_by_cpu[cpu] = 0
+    # get rid of all the runtime events
+    df = df[df['event'] != 'sched__sched_stat_runtime']
+    print 'End of conversion, marshaling and compressing...'
+    df.fillna(value=0, inplace=True, downcast='infer')
+    # save new cdict
+    with open(new_cdict, 'w') as ff:
+        res = {'event': df['event'].tolist(),
+               'cpu': df['cpu'].tolist(),
+               'usecs': df['usecs'].tolist(),
+               'pid': df['pid'].tolist(),
+               'task_name': df['task_name'].tolist(),
+               'duration': df['duration'].tolist(),
+               'next_pid': df['next_pid'].tolist(),
+               'next_comm': df['next_comm'].tolist()}
+        compressed = zlib.compress(msgpack.packb(res))
+        ff.write(compressed)
+        print 'Compressed dictionary written to %s %d entries size=%d bytes' % \
+              (new_cdict, len(df), len(compressed))
+
+    with open(new_cdict, 'r') as ff:
+        cdict = ff.read()
+
+    perf_dict = msgpack.unpackb(zlib.decompress(cdict))
+    df = DataFrame(perf_dict)
+
+
 # ---------------------------------- MAIN -----------------------------------------
 
 parser = OptionParser(usage="usage: %prog [options] <cdict_file>")
@@ -340,11 +417,11 @@ parser.add_option("--show-tids",
                   default=False,
                   help="show list of all tids with event count)"
                   )
-parser.add_option("--cpu-locality",
-                  dest="cpu_loc",
+parser.add_option("--core-locality",
+                  dest="core_loc",
                   action="store",
                   metavar="task name (regex)",
-                  help="show cpu locality chart for tasks with matching name"
+                  help="show core locality chart for tasks with matching name"
                   )
 parser.add_option("--kvm-exits",
                   dest="kvm_exits",
@@ -365,6 +442,12 @@ parser.add_option("-f", "--from",
                   dest="from_time",
                   help="(optional) start the analysis after first <from_time> msec"
                        " of capture (default=0)"
+                  )
+parser.add_option("--convert",
+                  dest="convert",
+                  action="store",
+                  metavar="new cdict file",
+                  help="migrate to new encoding with runtime aggregation into switch"
                   )
 (options, args) = parser.parse_args()
 
@@ -404,7 +487,13 @@ if not cdict_file.endswith('.cdict'):
 with open(cdict_file, 'r') as ff:
     cdict = ff.read()
 
-perf_dict = marshal.loads(zlib.decompress(cdict))
+decomp = zlib.decompress(cdict)
+try:
+    perf_dict = msgpack.unpackb(decomp)
+except (msgpack.exceptions.UnpackException, msgpack.exceptions.ExtraData):
+    # old serialization format
+    perf_dict = marshal.loads(decomp)
+
 df = DataFrame(perf_dict)
 html_file = cdict_file.replace('.cdict', '')
 
@@ -422,11 +511,13 @@ if options.show_tids:
     res.sort_values(ascending=False, inplace=True)
     print 'List of tids and task names sorted by context switches and kvm event count'
     print res
-elif options.cpu_loc:
-    show_cpu_locality(df, options.cpu_loc, options.label)
+elif options.core_loc:
+    show_core_locality(df, options.core_loc, options.label)
 elif options.task:
     show_task_heatmap(df, options.task, options.label)
 elif options.kvm_exits:
     show_kvm_heatmap(df, options.kvm_exits, options.label)
 elif options.successor_of_task:
     show_successors(df, options.successor_of_task, options.label)
+elif options.convert:
+    convert(df, options.convert)

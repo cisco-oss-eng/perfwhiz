@@ -9,12 +9,6 @@ import re
 import subprocess
 import perf_formatter
 
-from mkcdict_perf_script import trace_begin
-from mkcdict_perf_script import trace_end
-from mkcdict_perf_script import add_event
-from mkcdict_perf_script import kvm_entry
-from mkcdict_perf_script import kvm_exit
-
 perf_binary = 'perf'
 
 
@@ -81,114 +75,6 @@ def perf_record(opts, cs=True, kvm=True):
         return False
     return True
 
-
-def _kvm_entry(cpu, secs, nsecs, pid, comm, args):
-    # kvm:kvm_entry: vcpu 0
-    kvm_entry(cpu, secs, nsecs, pid, comm)
-
-kvm_exit_re = re.compile('reason (\w*) ')
-def _kvm_exit(cpu, secs, nsecs, pid, comm, args):
-    #
-    # kvm:kvm_exit: reason APIC_ACCESS rip 0xffffffff810271ee info 10b0 0
-    m = kvm_exit_re.match(args)
-    if m:
-        kvm_exit(cpu, secs, nsecs, pid, comm, m.group(1))
-    else:
-        print 'Dropped mismatch for kvm_exit: ' + args
-
-
-# sched:sched_switch: prev_comm=qemu-system-x86 prev_pid=28823 prev_prio=120 prev_state=S ==>
-# next_comm=swapper/7 next_pid=0 next_prio=120
-switch_re = re.compile('comm=([\w\-/]+) prev_pid=(\d+) prev_prio=\d+ prev_state=\w* ==> '
-                       'next_comm=([\w\-/]+) next_pid=(\d+) ')
-
-def sched_switch(cpu, secs, nsecs, pid, comm, args):
-
-    print 'sched switch:' + args
-    m = switch_re.match(args)
-    if m:
-        add_event('sched:sched_switch', cpu, secs, nsecs, m.group(2), m.group(1), 0, m.group(4), m.group(3))
-    else:
-        print 'Dropped mismatch for sched_stat_runtime: ' + args
-
-# sched:sched_stat_runtime: comm=qemu-system-x86 pid=28823 runtime=36140 [ns] vruntime=3273999068253 [ns]
-stat_runtime_re = re.compile('comm=([\w\-/]+) pid=(\d+) runtime=(\d)+ ')
-
-def sched_stat_runtime(cpu, secs, nsecs, pid, comm, args):
-    m = stat_runtime_re.match(args)
-    if m:
-        add_event('sched:sched_stat_runtime', cpu, secs, nsecs, m.group(2), m.group(1), m.group(3))
-    else:
-        print 'Dropped mismatch for sched_stat_runtime: ' + args
-
-# sched:sched_stat_sleep: comm=qemu-system-x86 pid=28823 delay=386438 [ns]
-stat_sleep_re = re.compile('comm=([\w\-/]+) pid=(\d+) delay=(\d)+ ')
-
-def sched_stat_sleep(cpu, secs, nsecs, pid, comm, args):
-    m = stat_sleep_re.match(args)
-    if m:
-        add_event('sched:sched_stat_sleep', cpu, secs, nsecs, m.group(2), m.group(1), m.group(3))
-    else:
-        print 'Dropped mismatch for sched_stat_sleep: ' + args
-
-fn_dispatch = {
-    'kvm_entry': _kvm_entry,
-    'kvm_exit': _kvm_exit,
-    'sched_switch': sched_switch,
-    'sched_stat_runtime': sched_stat_runtime,
-    'sched_stat_sleep': sched_stat_sleep
-}
-
-
-def decode_perf_text(filename):
-    #  qemu-system-x86 27637 [006] 622048.897809: kvm:kvm_entry: vcpu 0
-    trace_re = re.compile(' *([\w\-]*) *(\d*) \[(\d*)\] (\d*)\.(\d*): \w*:(\w*): ')
-    with open(filename, 'r') as input:
-        trace_begin()
-        for line in input:
-            if line[0] == '#':
-                continue
-            m = trace_re.match(line)
-            if m:
-                task = m.group(1)
-                pid = int(m.group(2))
-                cpu = int(m.group(3))
-                secs = int(m.group(4))
-                usecs = int(m.group(5))
-                event = m.group(6)
-                event_args = line[m.end():]
-                try:
-                    fn_dispatch[event](cpu, secs, usecs * 1000, pid, task, event_args)
-                except KeyError:
-                    pass
-        trace_end()
-
-'''
-def decode_txt():
-    #  qemu-system-x86 27637 [006] 622048.897809: kvm:kvm_entry: vcpu 0
-    trace_re = re.compile(' *([\w\-]*) *(\d*) \[(\d*)\] (\d*)\.(\d*): \w*:(\w*): ')
-    with open('abc.txt', 'r') as input:
-        for line in input:
-            if line[0] == '#':
-                continue
-            m = trace_re.match(line)
-            if m:
-                task = m.group(1)
-                pid = int(m.group(2))
-                cpu = int(m.group(3))
-                secs = int(m.group(4))
-                usecs = int(m.group(5))
-                event = m.group(6)
-                event_args = line[m.end():]
-                try:
-                    fn_dispatch[event](event_args)
-                except KeyError:
-                    print 'unknown:' + event
-                    pass
-            else:
-                print 'cannot decode:' + line
-        sys.exit(0)
-'''
 
 def capture_stats(opts, stats_filename):
     # perf sched latency -s switch
@@ -363,3 +249,97 @@ if __name__ == '__main__':
         print 'Overriding perf binary with: ' + perf_binary
 
     capture(opts, run_name)
+
+
+
+# Unused code - WIP
+# python decode of perf script text output - very slow
+# only when perf python extension is not available
+
+from mkcdict_perf_script import trace_begin
+from mkcdict_perf_script import trace_end
+from mkcdict_perf_script import add_event
+from mkcdict_perf_script import kvm_entry
+from mkcdict_perf_script import kvm_exit
+
+
+def _kvm_entry(cpu, secs, nsecs, pid, comm, args):
+    # kvm:kvm_entry: vcpu 0
+    kvm_entry(cpu, secs, nsecs, pid, comm)
+
+kvm_exit_re = re.compile('reason (\w*) ')
+def _kvm_exit(cpu, secs, nsecs, pid, comm, args):
+    #
+    # kvm:kvm_exit: reason APIC_ACCESS rip 0xffffffff810271ee info 10b0 0
+    m = kvm_exit_re.match(args)
+    if m:
+        kvm_exit(cpu, secs, nsecs, pid, comm, m.group(1))
+    else:
+        print 'Dropped mismatch for kvm_exit: ' + args
+
+
+# sched:sched_switch: prev_comm=qemu-system-x86 prev_pid=28823 prev_prio=120 prev_state=S ==>
+# next_comm=swapper/7 next_pid=0 next_prio=120
+switch_re = re.compile('comm=([\w\-/]+) prev_pid=(\d+) prev_prio=\d+ prev_state=\w* ==> '
+                       'next_comm=([\w\-/]+) next_pid=(\d+) ')
+
+def sched_switch(cpu, secs, nsecs, pid, comm, args):
+
+    print 'sched switch:' + args
+    m = switch_re.match(args)
+    if m:
+        add_event('sched:sched_switch', cpu, secs, nsecs, m.group(2), m.group(1), 0, m.group(4), m.group(3))
+    else:
+        print 'Dropped mismatch for sched_stat_runtime: ' + args
+
+# sched:sched_stat_runtime: comm=qemu-system-x86 pid=28823 runtime=36140 [ns] vruntime=3273999068253 [ns]
+stat_runtime_re = re.compile('comm=([\w\-/]+) pid=(\d+) runtime=(\d)+ ')
+
+def sched_stat_runtime(cpu, secs, nsecs, pid, comm, args):
+    m = stat_runtime_re.match(args)
+    if m:
+        add_event('sched:sched_stat_runtime', cpu, secs, nsecs, m.group(2), m.group(1), m.group(3))
+    else:
+        print 'Dropped mismatch for sched_stat_runtime: ' + args
+
+# sched:sched_stat_sleep: comm=qemu-system-x86 pid=28823 delay=386438 [ns]
+stat_sleep_re = re.compile('comm=([\w\-/]+) pid=(\d+) delay=(\d)+ ')
+
+def sched_stat_sleep(cpu, secs, nsecs, pid, comm, args):
+    m = stat_sleep_re.match(args)
+    if m:
+        add_event('sched:sched_stat_sleep', cpu, secs, nsecs, m.group(2), m.group(1), m.group(3))
+    else:
+        print 'Dropped mismatch for sched_stat_sleep: ' + args
+
+fn_dispatch = {
+    'kvm_entry': _kvm_entry,
+    'kvm_exit': _kvm_exit,
+    'sched_switch': sched_switch,
+    'sched_stat_runtime': sched_stat_runtime,
+    'sched_stat_sleep': sched_stat_sleep
+}
+
+
+def decode_perf_text(filename):
+    #  qemu-system-x86 27637 [006] 622048.897809: kvm:kvm_entry: vcpu 0
+    trace_re = re.compile(' *([\w\-]*) *(\d*) \[(\d*)\] (\d*)\.(\d*): \w*:(\w*): ')
+    with open(filename, 'r') as input:
+        trace_begin()
+        for line in input:
+            if line[0] == '#':
+                continue
+            m = trace_re.match(line)
+            if m:
+                task = m.group(1)
+                pid = int(m.group(2))
+                cpu = int(m.group(3))
+                secs = int(m.group(4))
+                usecs = int(m.group(5))
+                event = m.group(6)
+                event_args = line[m.end():]
+                try:
+                    fn_dispatch[event](cpu, secs, usecs * 1000, pid, task, event_args)
+                except KeyError:
+                    pass
+        trace_end()
