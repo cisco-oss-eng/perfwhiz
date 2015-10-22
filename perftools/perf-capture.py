@@ -86,6 +86,7 @@ def capture_stats(opts, stats_filename):
     else:
         # curate the process names before displaying
         results = get_curated_latency_table(results)
+
     with open(stats_filename, 'w') as ff:
         ff.write(results)
 

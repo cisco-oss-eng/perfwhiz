@@ -13,7 +13,15 @@ import itertools
 #
 
 import marshal
-import msgpack
+try:
+    # try to use the faster version if available
+    from msgpack import packb
+    from msgpack import unpackb
+except ImportError:
+    # else fall back to the pure python version (slower)
+    from umsgpack import packb
+    from umsgpack import unpackb
+
 import zlib
 import pandas
 
@@ -312,13 +320,20 @@ def show_core_locality(df, task_re, label):
 
     for task, color in zip(task_list, color_list):
         dfe = df[df['task_name'] == task]
+        # add 1 column to contain the starting time for each run period
+        dfe['start'] = dfe['usecs'] - dfe['duration']
         tid = dfe['pid'].iloc[0]
         count = len(dfe)
         legend_text = '%s:%d (%d)' % (task, tid, count)
+        # draw end of runs
         p.circle('usecs', 'cpu', source=ColumnDataSource(dfe),
-                 size=get_disc_size(count), color=color,
+                 size=get_disc_size(count)+2, color=color,
                  alpha=0.3,
                  legend=legend_text)
+        # draw segments to show the entire runs
+        p.segment('start', 'cpu', 'usecs', 'cpu', line_width=5, line_color=color,
+                  source=ColumnDataSource(dfe))
+
 
     # specify how to output the plot(s)
     output_html('cpuloc', task_list)
@@ -386,16 +401,10 @@ def convert(df, new_cdict):
                'duration': df['duration'].tolist(),
                'next_pid': df['next_pid'].tolist(),
                'next_comm': df['next_comm'].tolist()}
-        compressed = zlib.compress(msgpack.packb(res))
+        compressed = zlib.compress(packb(res))
         ff.write(compressed)
         print 'Compressed dictionary written to %s %d entries size=%d bytes' % \
               (new_cdict, len(df), len(compressed))
-
-    with open(new_cdict, 'r') as ff:
-        cdict = ff.read()
-
-    perf_dict = msgpack.unpackb(zlib.decompress(cdict))
-    df = DataFrame(perf_dict)
 
 
 # ---------------------------------- MAIN -----------------------------------------
@@ -489,7 +498,7 @@ with open(cdict_file, 'r') as ff:
 
 decomp = zlib.decompress(cdict)
 try:
-    perf_dict = msgpack.unpackb(decomp)
+    perf_dict = unpackb(decomp)
 except (msgpack.exceptions.UnpackException, msgpack.exceptions.ExtraData):
     # old serialization format
     perf_dict = marshal.loads(decomp)

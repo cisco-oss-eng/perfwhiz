@@ -27,7 +27,12 @@ try:
 except ImportError:
     pass
 
-import msgpack
+try:
+    # try to use the faster version if available
+    from msgpack import packb
+except ImportError:
+    # else fall back to the pure python version (slower)
+    from umsgpack import packb
 import zlib
 
 event_name_list = []
@@ -93,7 +98,7 @@ def trace_end():
            'next_pid': next_pid_list,
            'next_comm': next_comm_list}
     print 'End of trace, marshaling and compressing...'
-    compressed = zlib.compress(msgpack.packb(res))
+    compressed = zlib.compress(packb(res))
     with open('perf.cdict', 'w') as ff:
         ff.write(compressed)
     print 'Compressed dictionary written to perf.cdict %d entries size=%d bytes' % \
