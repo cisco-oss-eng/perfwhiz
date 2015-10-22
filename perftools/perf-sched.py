@@ -171,7 +171,7 @@ def show_task_heatmap(df, task, label):
         'sched__sched_switch': (GREEN, 'switched out from cpu (y=run time)')
     }
 
-    p = figure(plot_width=1000, plot_height=1000, y_axis_type="log",
+    p = figure(plot_width=1000, plot_height=800, y_axis_type="log",
                title_text_font_size='14pt',
                title_text_font_style = "bold")
     p.xaxis.axis_label = 'time (usecs)'
@@ -499,7 +499,7 @@ with open(cdict_file, 'r') as ff:
 decomp = zlib.decompress(cdict)
 try:
     perf_dict = unpackb(decomp)
-except (msgpack.exceptions.UnpackException, msgpack.exceptions.ExtraData):
+except Exception:
     # old serialization format
     perf_dict = marshal.loads(decomp)
 

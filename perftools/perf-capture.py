@@ -134,7 +134,7 @@ def capture(opts, run_name):
             cdict_filename = opts.dest_folder + run_name + '.cdict'
             # try to run this script through the perf tool itself as it is faster
             rc = subprocess.call([perf_binary, 'script', '-s', 'mkcdict_perf_script.py', '-i', perf_data_filename])
-            if rc:
+            if rc == 255:
                 print '   perf is not built with the python scripting extension, parsing text file (slower)...'
                 text_filename = run_name + '.txt'
                 print '   Generating text traces to file %s...' % (text_filename)
