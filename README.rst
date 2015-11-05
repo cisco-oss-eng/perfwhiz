@@ -8,7 +8,7 @@ leveraging the Linux perf tool and generate from the perf traces:
 
 - context switch heat maps
 - KVM exit heat maps
-- copre locality heat maps
+- core locality and core usage heat maps
 
 The main scripts are:
 

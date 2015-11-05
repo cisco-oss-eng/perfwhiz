@@ -8,9 +8,6 @@ from optparse import OptionParser
 import os
 import sys
 import itertools
-#
-# Import reusable code from pnstk.py
-#
 
 import marshal
 try:
@@ -24,11 +21,15 @@ except ImportError:
 
 import zlib
 import pandas
+from pandas import DataFrame
+import numpy as np
 
 from bokeh.plotting import figure, output_file, show
 from bokeh.models.sources import ColumnDataSource
 from bokeh.palettes import Spectral6
-from pandas import DataFrame
+from bokeh.io import gridplot
+from bokeh._legacy_charts import HeatMap
+from bokeh.palettes import YlOrRd9
 
 # Global variables
 
@@ -127,11 +128,8 @@ def get_disc_size(count):
         return 8
     return 6
 
-def output_html(chart_type, task_list=[]):
-    filename = html_file + '_' + chart_type
-    for task in task_list:
-        filename += '_' + task.replace(':', '.')
-    filename += '.html'
+def output_html(chart_type, task_re):
+    filename = html_file + '_' + chart_type + '_' + task_re +  '.html'
     output_file(filename)
     print('Saved to ' + filename)
 
@@ -160,46 +158,173 @@ def get_full_task_name(df, task):
     task = task + ':' + str(tid)
     return (df, task)
 
-def show_task_heatmap(df, task, label):
-    df, task = get_full_task_name(df, task)
-    if not task:
-        return
+def get_groupby(df, task_re):
+    # if task is a number it is considered to be a pid ID
+    # if text it is a task name
+    try:
+        tid = int(task_re)
+        # tid given
+        df = df[df['pid'] == tid]
+        # a groupby with only 1 group since we already filtered on the pid
+        gb = df.groupby('pid')
+    except ValueError:
+        # task given: find corresponding tid
+        df = df[df['task_name'].str.match(task_re)]
+        gb = df.groupby('task_name')
+
+    return gb
+
+def split_list(l, n):
+    # split a list into multiple lists of given len
+    n = max(1, n)
+    return [l[i:i + n] for i in range(0, len(l), n)]
+
+def show_task_heatmap(df, task_re, label):
+    gb = get_groupby(df, task_re)
+
     # these are the 2 main events to show
     legend_map = {
         'sched__sched_stat_sleep': (RED, 'wakeup from sleep (y=sleep time)'),
-        # 'sched__sched_stat_runtime': (GREEN, 'switched out from cpu (y=run time)')
         'sched__sched_switch': (GREEN, 'switched out from cpu (y=run time)')
     }
 
-    p = figure(plot_width=1000, plot_height=800, y_axis_type="log",
-               title_text_font_size='14pt',
-               title_text_font_style = "bold")
-    p.xaxis.axis_label = 'time (usecs)'
-    p.yaxis.axis_label = 'duration (usecs)'
-    p.legend.orientation = "bottom_right"
-    p.xaxis.axis_label_text_font_size = "10pt"
-    p.yaxis.axis_label_text_font_size = "10pt"
-    p.title = "Context switches %s (%s)" % (task, label)
-    p.ygrid.minor_grid_line_color = 'navy'
-    p.ygrid.minor_grid_line_alpha = 0.1
-
-    for event in legend_map:
-        dfe = df[df.event == event]
-        dfe = dfe[dfe['duration'] > 0]
-        count = len(dfe)
-        color, legend_text = legend_map[event]
-        legend_text = '%s (%d)' % (legend_text, count)
-        p.circle('usecs', 'duration', source=ColumnDataSource(dfe),
-                 size=get_disc_size(count),
-                 color=color,
-                 alpha=0.3,
-                 legend=legend_text)
+    chart_list = []
+    width = 1000
+    height = 800
+    font_size ='14pt'
+    show_legend = True
+    nb_charts = len(gb.groups)
+    if nb_charts == 0:
+        print 'No selection matching: ' + task_re
+        return
+    if nb_charts > 1:
+        width /= 2
+        height /= 2
+        font_size = '12pt'
+    task_list = gb.groups.keys()
+    task_list.sort()
+    for task in task_list:
+        p = figure(plot_width=width, plot_height=height, y_axis_type="log",
+                   title_text_font_size=font_size,
+                   title_text_font_style = "bold")
+        p.xaxis.axis_label = 'time (usecs)'
+        p.yaxis.axis_label = 'duration (usecs)'
+        p.legend.orientation = "bottom_right"
+        p.xaxis.axis_label_text_font_size = "10pt"
+        p.yaxis.axis_label_text_font_size = "10pt"
+        if label:
+            p.title = "Context switches %s (%s)" % (task, label)
+            label = None
+        else:
+            p.title = "Context switches %s" % (task)
+        p.ygrid.minor_grid_line_color = 'navy'
+        p.ygrid.minor_grid_line_alpha = 0.1
+        dfg = gb.get_group(task)
+        for event in legend_map:
+            dfe = dfg[dfg.event == event]
+            dfe = dfe[dfe['duration'] > 0]
+            count = len(dfe)
+            color, legend_text = legend_map[event]
+            if show_legend:
+                legend_text = '%s (%d)' % (legend_text, count)
+            elif color == GREEN:
+                legend_text = '(%d)' % (count)
+            else:
+                legend_text = None
+            p.circle('usecs', 'duration', source=ColumnDataSource(dfe),
+                     size=get_disc_size(count),
+                     color=color,
+                     alpha=0.3,
+                     legend=legend_text)
+        show_legend = False
+        chart_list.append(p)
 
     # specify how to output the plot(s)
-    output_html('thm', [task])
+    output_html('thm', task_re)
 
     # display the figure
-    show(p)
+    if len(chart_list) == 1:
+        show(chart_list[0])
+    else:
+        # split the list into an array of rows with 2 charts per row
+        gp = gridplot(split_list(chart_list, 2))
+        show(gp)
+
+def show_cpu(df, task_re, label):
+    # remove unneeded columns
+    df.drop('next_pid', axis=1, inplace=True)
+    df.drop('pid', axis=1, inplace=True)
+    df.drop('usecs', axis=1, inplace=True)
+    df.drop('next_comm', axis=1, inplace=True)
+
+    # filter out all events except the switch events
+    df = df[df.event == 'sched__sched_switch']
+    df.drop('event', axis=1, inplace=True)
+    df = df[df['task_name'].str.match(task_re)]
+
+    gb = df.groupby(['task_name', 'cpu'], as_index=False)
+    df = gb.aggregate(np.sum)
+    # at this point we have a df that looks like this:
+    #         task_name  cpu  duration
+    # 0     ASA.1.vcpu0    8      7954
+    # 1     ASA.1.vcpu0    9      5475
+    # 2     ASA.1.vcpu0   10      4151
+    # 3     ASA.1.vcpu0   11     12391
+    # 4     ASA.1.vcpu0   12     21025
+    # 5     ASA.1.vcpu0   13      6447
+    # 6     ASA.1.vcpu0   14     16798
+    # 7     ASA.1.vcpu0   15      3911
+    # 8    ASA.10.vcpu0    8      4248
+    # 9    ASA.10.vcpu0    9      3534
+    # 10   ASA.10.vcpu0   10     15624
+    # 11   ASA.10.vcpu0   11      6925
+    # etc...
+    dfsum = df.drop('cpu', axis=1)
+    gb = dfsum.groupby('task_name', as_index=False)
+    dfsum = gb.aggregate(np.sum)
+    # dfsum is the sum of all duration for given task
+    # 0    ASA.1.vcpu0     78152
+    # 1   ASA.10.vcpu0     65637
+    # 2   ASA.11.vcpu0     81525
+    # 3   ASA.12.vcpu0     56488
+    dfsum.rename(columns={'duration': 'total'}, inplace=True)
+
+    # now we need to reinsert that data back to the df
+    dfm = pandas.merge(df, dfsum, on='task_name')
+    #         task_name  cpu  duration  total
+    # 0     ASA.1.vcpu0    8      7954  78152
+    # 1     ASA.1.vcpu0    9      5475  78152
+    # 2     ASA.1.vcpu0   10      4151  78152
+
+    # Add a % column
+    dfm['percent'] = (dfm['duration'] * 100)/dfm['total']
+    dfm.percent = dfm.percent.round()
+
+    # now add 1 column per core# to gather the % for each task spent on that core
+    # first get the list of cores
+    max_core = dfm.cpu.max()
+    core_list = range(max_core + 1)
+    for core in core_list:
+        dfm[str(core)] = dfm.apply(lambda row: row['percent'] if row['cpu'] == core else 0 , axis=1)
+    dfm.drop(['percent', 'duration', 'total', 'cpu'], axis=1, inplace=True)
+
+    # group by task name and add up all core percentage
+    gb = dfm.groupby('task_name')
+    dfm = gb.aggregate(np.sum)
+
+    # print heatmap
+
+    title = "%% Core Usage (%s)" % (label)
+    palette = YlOrRd9[::-1]  # Reverse the color order so dark red is highest value
+    # zero % will use white
+    # palette.insert(0, '#ffffff')
+    palette[0] = '#ffffff'
+    hm = HeatMap(dfm, title=title, width=800, height=len(dfm)*30, palette=palette,
+                 xlabel='core', responsive=False)
+    # specify how to output the plot(s), title_text_font_size='14pt'
+    output_html('core', task_re)
+    show(hm)
+
 
 def convert_exit_df(df, label):
     # fill in the error reason text from the code in
@@ -266,7 +391,7 @@ def show_kvm_heatmap(df, task, label):
         total_time += event_duration
 
     # specify how to output the plot(s)
-    output_html('kvm', [task])
+    output_html('kvm', task)
 
     # display the figure
     show(p)
@@ -303,7 +428,11 @@ def show_core_locality(df, task_re, label):
 
     df = df[df['event'] == 'sched__sched_switch']
     df = df[df['task_name'].str.match(task_re)]
-    task_list = pandas.unique(df.task_name.ravel())
+    # aggregate all the per core tasks (e.g. swapper/0 -> swapper)
+    df['task_name'] = df['task_name'].str.replace(r'/.*$', '')
+    # group by task name
+    gb = df.groupby('task_name')
+    task_list = gb.groups
 
     p = figure(plot_width=1000, plot_height=800,
                title_text_font_size='14pt',
@@ -319,7 +448,7 @@ def show_core_locality(df, task_re, label):
     color_list = cycle_colors(task_list)
 
     for task, color in zip(task_list, color_list):
-        dfe = df[df['task_name'] == task]
+        dfe = gb.get_group(task)
         # add 1 column to contain the starting time for each run period
         dfe['start'] = dfe['usecs'] - dfe['duration']
         tid = dfe['pid'].iloc[0]
@@ -336,7 +465,7 @@ def show_core_locality(df, task_re, label):
 
 
     # specify how to output the plot(s)
-    output_html('cpuloc', task_list)
+    output_html('coreloc', task_re)
 
     # display the figure
     show(p)
@@ -414,7 +543,7 @@ parser = OptionParser(usage="usage: %prog [options] <cdict_file>")
 parser.add_option("-t", "--task",
                   dest="task",
                   metavar="task ID or name",
-                  help="show thread context switch heat map (use numeric tid or task name)"
+                  help="show thread context switch heat map (use numeric tid or task name regex)"
                   )
 parser.add_option("--successors-of",
                   dest="successor_of_task",
@@ -436,6 +565,12 @@ parser.add_option("--kvm-exits",
                   dest="kvm_exits",
                   metavar="task ID or name",
                   help="show thread kvm exits heat map"
+                  )
+parser.add_option("--cpu",
+                  dest="cpu",
+                  action="store",
+                  metavar="task name (regex)",
+                  help="show cpu utilization for tasks with matching name"
                   )
 parser.add_option("--label",
                   dest="label",
@@ -470,10 +605,15 @@ df = DataFrame(  {'AAA': [0, 0, 0, 1,2,3,4,5,6,7,8,9,10],
                             'kvm_exit', 'sched__sched_switch',
                             'kvm_exit', 'kvm_exit', 'kvm_exit',
                             'sched__sched_switchB', 'kvm_exit']})
-show_last_exit_reasons_before_switches(df, 5)
+print df
+#show_last_exit_reasons_before_switches(df, 5)
+gb = df.groupby('event')
+print gb
+for category in gb.groups:
+    print category
+    print gb.get_group(category)
 sys.exit(0)
 '''
-
 
 if options.from_time:
     from_time = int(options.from_time) * 1000
@@ -522,6 +662,8 @@ if options.show_tids:
     print res
 elif options.core_loc:
     show_core_locality(df, options.core_loc, options.label)
+elif options.cpu:
+    show_cpu(df, options.cpu, options.label)
 elif options.task:
     show_task_heatmap(df, options.task, options.label)
 elif options.kvm_exits:

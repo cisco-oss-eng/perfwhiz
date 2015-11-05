@@ -1,7 +1,6 @@
 import sys
 
 from setuptools import setup
-from setuptools import Extension
 from setuptools.command.test import test
 
 
