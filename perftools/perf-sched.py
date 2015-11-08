@@ -1,6 +1,20 @@
 #!/usr/bin/env python
+# Copyright 2015 Cisco Systems, Inc.  All rights reserved.
 #
-# Alec Hothan
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+#
+#
+# Author: Alec Hothan
 # ---------------------------------------------------------
 
 
@@ -151,7 +165,7 @@ def get_disc_size(count):
     return 6
 
 def output_html(chart_type, task_re):
-    filename = html_file + '_' + chart_type + '_' + task_re +  '.html'
+    filename = html_file + '_' + chart_type + '_' + task_re + '.html'
     output_file(filename)
     print('Saved to ' + filename)
 
@@ -203,9 +217,9 @@ def split_list(l, n):
 
 def show_task_heatmap(df, task_re, label):
 
-    #dff = df[df['task_name'].str.match(task_re)]
-    #dff = dff[dff['event'].str.match('sched__sched')]
-    #print dff
+    # dff = df[df['task_name'].str.match(task_re)]
+    # dff = dff[dff['event'].str.match('sched__sched')]
+    # print dff
     gb = get_groupby(df, task_re)
 
     # these are the 2 main events to show
@@ -216,7 +230,7 @@ def show_task_heatmap(df, task_re, label):
     chart_list = []
     width = 1000
     height = 800
-    font_size ='14pt'
+    font_size = '14pt'
     show_legend = True
     nb_charts = len(gb.groups)
     if nb_charts == 0:
@@ -231,7 +245,7 @@ def show_task_heatmap(df, task_re, label):
     for task in task_list:
         p = figure(plot_width=width, plot_height=height, y_axis_type="log",
                    title_text_font_size=font_size,
-                   title_text_font_style = "bold")
+                   title_text_font_style="bold")
         p.xaxis.axis_label = 'time (usecs)'
         p.yaxis.axis_label = 'duration (usecs)'
         p.legend.orientation = "bottom_right"
@@ -322,7 +336,7 @@ def show_cpu(df, task_re, label):
     # 2     ASA.1.vcpu0   10      4151  78152
 
     # Add a % column
-    dfm['percent'] = (dfm['duration'] * 100)/dfm['total']
+    dfm['percent'] = (dfm['duration'] * 100) / dfm['total']
     dfm.percent = dfm.percent.round()
 
     # now add 1 column per core# to gather the % for each task spent on that core
@@ -330,7 +344,7 @@ def show_cpu(df, task_re, label):
     max_core = dfm.cpu.max()
     core_list = range(max_core + 1)
     for core in core_list:
-        dfm[str(core)] = dfm.apply(lambda row: row['percent'] if row['cpu'] == core else 0 , axis=1)
+        dfm[str(core)] = dfm.apply(lambda row: row['percent'] if row['cpu'] == core else 0, axis=1)
     dfm.drop(['percent', 'duration', 'total', 'cpu'], axis=1, inplace=True)
     normalize_df_task_name(dfm)
 
@@ -345,7 +359,7 @@ def show_cpu(df, task_re, label):
     # zero % will use white
     # palette.insert(0, '#ffffff')
     palette[0] = '#ffffff'
-    hm = HeatMap(dfm, title=title, width=800, height=120+len(dfm)*16, palette=palette,
+    hm = HeatMap(dfm, title=title, width=800, height=120 + len(dfm) * 16, palette=palette,
                  xlabel='core', responsive=False)
     # specify how to output the plot(s), title_text_font_size='14pt'
     output_html('core', task_re)
@@ -378,7 +392,6 @@ def show_exit_type_count(df_all_exits, df_last_exits):
 def show_kvm_heatmap(df, task_re, label):
     gb = get_groupby(df, task_re)
 
-
     chart_list = []
     # these are the 2 main events to show
     legend_map = {
@@ -387,7 +400,7 @@ def show_kvm_heatmap(df, task_re, label):
     }
     width = 1000
     height = 800
-    font_size ='14pt'
+    font_size = '14pt'
     show_legend = True
     nb_charts = len(gb.groups)
     if nb_charts == 0:
@@ -404,7 +417,7 @@ def show_kvm_heatmap(df, task_re, label):
     for task in task_list:
         p = figure(plot_width=width, plot_height=height, y_axis_type="log",
                    title_text_font_size=font_size,
-                   title_text_font_style = "bold")
+                   title_text_font_style="bold")
         p.xaxis.axis_label = 'time (usecs)'
         p.yaxis.axis_label = 'duration (usecs)'
         p.legend.orientation = "bottom_right"
@@ -483,8 +496,7 @@ def show_kvm_exit_types(df, task_re, label):
     # display the figure
     show(p)
 
-    if 1:
-        return
+    '''
     # Show aggregated time inside VM and inside KVM
     print
     print 'Aggregated duration:'
@@ -512,6 +524,7 @@ def show_kvm_exit_types(df, task_re, label):
     df = df[df['event'] == 'kvm_exit']
 
     show_exit_type_count(dfexits, df)
+    '''
 
 def show_core_locality(df, task_re, label):
 
@@ -525,7 +538,7 @@ def show_core_locality(df, task_re, label):
 
     p = figure(plot_width=1000, plot_height=800,
                title_text_font_size='14pt',
-               title_text_font_style = "bold")
+               title_text_font_style="bold")
 
     p.xaxis.axis_label = 'time (usecs)'
     p.yaxis.axis_label = 'core'
@@ -545,13 +558,12 @@ def show_core_locality(df, task_re, label):
         legend_text = '%s:%d (%d)' % (task, tid, count)
         # draw end of runs
         p.circle('usecs', 'cpu', source=ColumnDataSource(dfe),
-                 size=get_disc_size(count)+2, color=color,
+                 size=get_disc_size(count) + 2, color=color,
                  alpha=0.3,
                  legend=legend_text)
         # draw segments to show the entire runs
         p.segment('start', 'cpu', 'usecs', 'cpu', line_width=5, line_color=color,
                   source=ColumnDataSource(dfe))
-
 
     # specify how to output the plot(s)
     output_html('coreloc', task_re)
@@ -601,7 +613,7 @@ def convert(df, new_cdict):
                 if df['pid'].iloc[index]:
                     # don't bother to update swapper (pid=0)
                     runtime = runtime_by_cpu[cpu]
-                    df.set_value(index, 'duration',runtime)
+                    df.set_value(index, 'duration', runtime)
             except KeyError:
                 pass
             runtime_by_cpu[cpu] = 0

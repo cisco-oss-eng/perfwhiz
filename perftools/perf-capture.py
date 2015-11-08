@@ -1,3 +1,21 @@
+#!/usr/bin/env python
+# Copyright 2015 Cisco Systems, Inc.  All rights reserved.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+#
+#
+# Author: Alec Hothan
+# -----------------------------------s----------------------
 #
 # A wrapper around the perf tool to capture various data related to context switches and
 # KVM events
@@ -221,7 +239,7 @@ if __name__ == '__main__':
     # pick at least one command
     if not (opts.all | opts.switches | opts.stats):
         print 'Pick at least one of --stats, --switches, --all'
-        sys,exit(3)
+        sys.exit(3)
 
     CFG_FILE = '.mkcdict.cfg'
 
@@ -250,7 +268,6 @@ if __name__ == '__main__':
         print 'Overriding perf binary with: ' + perf_binary
 
     capture(opts, run_name)
-
 
 
 # Unused code - WIP
