@@ -7,3 +7,5 @@
 AUTHORS
 ChangeLog
 .cache
+*.ipynb
+.ipynb_checkpoints

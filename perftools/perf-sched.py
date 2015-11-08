@@ -22,6 +22,7 @@ except ImportError:
 import zlib
 import pandas
 from pandas import DataFrame
+from pandas import Series
 import numpy as np
 
 from bokeh.plotting import figure, output_file, show
@@ -29,6 +30,7 @@ from bokeh.models.sources import ColumnDataSource
 from bokeh.palettes import Spectral6
 from bokeh.io import gridplot
 from bokeh._legacy_charts import HeatMap
+from bokeh.charts import Bar
 from bokeh.palettes import YlOrRd9
 
 # Global variables
@@ -37,6 +39,26 @@ from bokeh.palettes import YlOrRd9
 from_time = 0
 # cap input file to first cap_time usec, 0 = unlimited
 cap_time = 0
+
+
+# For sorting
+# 'CSR.1.vcpu0' => '0001.CSR.vcpu0'
+def normalize_task_name(task):
+    tokens = task.split('.')
+    if len(tokens) > 1:
+        # extract the service chain
+        chain = tokens[1]
+        try:
+            chain = int(tokens[1])
+            res = '%03d' % (chain)
+            tokens.pop(1)
+            return res + '.' + '.'.join(tokens)
+        except ValueError:
+            pass
+    return task
+
+def normalize_df_task_name(df):
+    df['task_name'] = df.apply(lambda row: normalize_task_name(row['task_name']), axis=1)
 
 # KVM exit reasons
 # Intel64 and IA32 Architecture Software Developer's Manual Vol 3B, System Programming Guide Part 2
@@ -180,6 +202,10 @@ def split_list(l, n):
     return [l[i:i + n] for i in range(0, len(l), n)]
 
 def show_task_heatmap(df, task_re, label):
+
+    #dff = df[df['task_name'].str.match(task_re)]
+    #dff = dff[dff['event'].str.match('sched__sched')]
+    #print dff
     gb = get_groupby(df, task_re)
 
     # these are the 2 main events to show
@@ -187,7 +213,6 @@ def show_task_heatmap(df, task_re, label):
         'sched__sched_stat_sleep': (RED, 'wakeup from sleep (y=sleep time)'),
         'sched__sched_switch': (GREEN, 'switched out from cpu (y=run time)')
     }
-
     chart_list = []
     width = 1000
     height = 800
@@ -307,6 +332,7 @@ def show_cpu(df, task_re, label):
     for core in core_list:
         dfm[str(core)] = dfm.apply(lambda row: row['percent'] if row['cpu'] == core else 0 , axis=1)
     dfm.drop(['percent', 'duration', 'total', 'cpu'], axis=1, inplace=True)
+    normalize_df_task_name(dfm)
 
     # group by task name and add up all core percentage
     gb = dfm.groupby('task_name')
@@ -319,7 +345,7 @@ def show_cpu(df, task_re, label):
     # zero % will use white
     # palette.insert(0, '#ffffff')
     palette[0] = '#ffffff'
-    hm = HeatMap(dfm, title=title, width=800, height=len(dfm)*30, palette=palette,
+    hm = HeatMap(dfm, title=title, width=800, height=120+len(dfm)*16, palette=palette,
                  xlabel='core', responsive=False)
     # specify how to output the plot(s), title_text_font_size='14pt'
     output_html('core', task_re)
@@ -349,53 +375,116 @@ def show_exit_type_count(df_all_exits, df_last_exits):
     res.sort_values('total count', inplace=True, ascending=False)
     print res
 
-def show_kvm_heatmap(df, task, label):
-    df, task = get_full_task_name(df, task)
-    if not task:
-        return
+def show_kvm_heatmap(df, task_re, label):
+    gb = get_groupby(df, task_re)
+
+
+    chart_list = []
     # these are the 2 main events to show
     legend_map = {
         'kvm_exit': (GREEN, 'vcpu running (y=vcpu run time)'),
         'kvm_entry': (RED, 'vcpu not running (y=kvm+sleep time)')
     }
+    width = 1000
+    height = 800
+    font_size ='14pt'
+    show_legend = True
+    nb_charts = len(gb.groups)
+    if nb_charts == 0:
+        print 'No selection matching: ' + task_re
+        return
+    if nb_charts > 1:
+        width /= 2
+        height /= 2
+        font_size = '12pt'
+    task_list = gb.groups.keys()
+    task_list.sort()
+    show_legend = True
 
-    p = figure(plot_width=1000, plot_height=800, y_axis_type="log",
-               title_text_font_size='14pt',
-               title_text_font_style = "bold")
-    p.xaxis.axis_label = 'time (usecs)'
-    p.yaxis.axis_label = 'duration (usecs)'
-    p.legend.orientation = "bottom_right"
-    p.xaxis.axis_label_text_font_size = "10pt"
-    p.yaxis.axis_label_text_font_size = "10pt"
-    p.title = "KVM entries and exits for %s (%s)" % (task, label)
-    p.ygrid.minor_grid_line_color = 'navy'
-    p.ygrid.minor_grid_line_alpha = 0.1
-    accumulated_time = {}
-    total_time = 0
-    for event in legend_map:
-        dfe = df[df.event == event]
-        count = len(dfe)
-        color, legend_text = legend_map[event]
-        legend_text = '%s (%d)' % (legend_text, len(dfe))
-        # there is bug in bokeh when there are too many circles to draw, nothing is visible
-        if len(dfe) > 50000:
-            dfe = dfe[:50000]
-            print 'Series for %s display truncated to 50000 events' % (event)
-        p.circle('usecs', 'duration', source=ColumnDataSource(dfe),
-                 size=get_disc_size(count),
-                 color=color,
-                 alpha=0.3,
-                 legend=legend_text)
-        event_duration = dfe['duration'].sum()
-        accumulated_time[event] = event_duration
-        total_time += event_duration
+    for task in task_list:
+        p = figure(plot_width=width, plot_height=height, y_axis_type="log",
+                   title_text_font_size=font_size,
+                   title_text_font_style = "bold")
+        p.xaxis.axis_label = 'time (usecs)'
+        p.yaxis.axis_label = 'duration (usecs)'
+        p.legend.orientation = "bottom_right"
+        p.xaxis.axis_label_text_font_size = "10pt"
+        p.yaxis.axis_label_text_font_size = "10pt"
+        if label:
+            p.title = "KVM entries and exits for %s (%s)" % (task, label)
+            label = None
+        else:
+            p.title = "KVM entries and exits for %s" % (task)
+        p.ygrid.minor_grid_line_color = 'navy'
+        p.ygrid.minor_grid_line_alpha = 0.1
+        accumulated_time = {}
+        total_time = 0
+        dfg = gb.get_group(task)
+        # remove any row with zero duration as it confuses the chart library
+        dfg = dfg[dfg['duration'] > 0]
+        for event in legend_map:
+            dfe = dfg[dfg.event == event]
+            count = len(dfe)
+            color, legend_text = legend_map[event]
+            if show_legend:
+                legend_text = '%s (%d)' % (legend_text, count)
+            elif color == GREEN:
+                legend_text = '(%d)' % (count)
+            else:
+                legend_text = None
+            # there is bug in bokeh when there are too many circles to draw, nothing is visible
+            if len(dfe) > 50000:
+                dfe = dfe[:50000]
+                print 'Series for %s display truncated to 50000 events' % (event)
+            p.circle('usecs', 'duration', source=ColumnDataSource(dfe),
+                     size=get_disc_size(count),
+                     color=color,
+                     alpha=0.3,
+                     legend=legend_text)
+            event_duration = dfe['duration'].sum()
+            accumulated_time[event] = event_duration
+            total_time += event_duration
+        chart_list.append(p)
+        show_legend = False
 
     # specify how to output the plot(s)
-    output_html('kvm', task)
+    output_html('kvm', task_re)
+
+    # display the figure
+    if len(chart_list) == 1:
+        show(chart_list[0])
+    else:
+        # split the list into an array of rows with 2 charts per row
+        gp = gridplot(split_list(chart_list, 2))
+        show(gp)
+
+def show_kvm_exit_types(df, task_re, label):
+    df = df[df['event'] == 'kvm_exit']
+    df = df[df['task_name'].str.match(task_re)]
+    # the next_comm column contains the exit code
+    exit_codes = Series(KVM_EXIT_REASONS)
+    # add  new column congaining the exit reason in clear text
+    df['exit_reason'] = df['next_comm'].map(exit_codes)
+    df.drop(['cpu', 'duration', 'event', 'next_pid', 'pid', 'next_comm', 'usecs'], inplace=True, axis=1)
+    # group by task name then exit reasons
+    gb = df.groupby(['task_name', 'exit_reason'])
+    # number of exit types
+    size_series = gb.size()
+    df = size_series.to_frame('count')
+    df.reset_index(inplace=True)
+
+    p = Bar(df, label='task_name', values='count', stack='exit_reason',
+            title="KVM Exit types per task", legend='top_right',
+            width=800, height=800)
+
+    # specify how to output the plot(s)
+    output_html('kvm-types', task_re)
 
     # display the figure
     show(p)
 
+    if 1:
+        return
     # Show aggregated time inside VM and inside KVM
     print
     print 'Aggregated duration:'
@@ -561,16 +650,21 @@ parser.add_option("--core-locality",
                   metavar="task name (regex)",
                   help="show core locality chart for tasks with matching name"
                   )
-parser.add_option("--kvm-exits",
-                  dest="kvm_exits",
-                  metavar="task ID or name",
-                  help="show thread kvm exits heat map"
-                  )
 parser.add_option("--cpu",
                   dest="cpu",
                   action="store",
                   metavar="task name (regex)",
                   help="show cpu utilization for tasks with matching name"
+                  )
+parser.add_option("--kvm-exits",
+                  dest="kvm_exits",
+                  metavar="task name (regex)",
+                  help="show thread kvm exits heat map"
+                  )
+parser.add_option("--kvm-exit-types",
+                  dest="kvm_exit_types",
+                  metavar="task name (regex)",
+                  help="show thread kvm exit types bar charts"
                   )
 parser.add_option("--label",
                   dest="label",
@@ -668,6 +762,8 @@ elif options.task:
     show_task_heatmap(df, options.task, options.label)
 elif options.kvm_exits:
     show_kvm_heatmap(df, options.kvm_exits, options.label)
+elif options.kvm_exit_types:
+    show_kvm_exit_types(df, options.kvm_exit_types, options.label)
 elif options.successor_of_task:
     show_successors(df, options.successor_of_task, options.label)
 elif options.convert:
