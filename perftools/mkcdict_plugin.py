@@ -17,15 +17,26 @@
 # Author: Alec Hothan
 # ---------------------------------------------------------
 
+# This is an example of plugin that will load the list of instances from OpenStack
+# and extract the type of service and service chain name from the instance name
+# and store the resulting descriptive string in a dictionary indexed by the uuid
+#
 
 import credentials
 import os
 import re
 from novaclient.client import Client
 
+# Config file to specify the OpenStack crendentials needed to connect to the controller
+# The file must contain the rc variable to point to the OpenStack credentials file
+# (as downloaded from the Horizon dashboard), for example:
+# rc=../admin-oper.sh
+CFG_FILE = '.mkcdict.cfg'
 
+# Extract the VM type and service chain ID from the instance name
+# ESC_Day0-3__68540__MT__MTPerftest-FULL-01ESC_Day0-31.1__0__ASA__0
 # ESC_Day0-3__62940__MT__MTPerftest_FULL_01ESC_Day0-31.1__0__CSR__0
-instance_re = re.compile('ESC_Day0-3__\d*__MT__MTPerftest_FULL_(\d*)ESC_Day0-31.1__0__([A-Z]*)_')
+instance_re = re.compile('ESC_Day0-3__\d*__MT__MTPerftest.FULL.(\d*)ESC_Day0-31.1__0__([A-Z]*)_')
 
 # A dict of full names indexed by the uuid
 #
@@ -41,7 +52,6 @@ def decode_instance_name(name):
         return int(chain_id), nvf
     return None, None
 
-CFG_FILE = '.mkcdict.cfg'
 
 class OptionsHolder(object):
     def __init__(self):
