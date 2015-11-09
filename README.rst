@@ -12,10 +12,12 @@ leveraging the Linux perf tool and generate from the perf traces:
 - core locality heat maps (where does task run over time)
 - task scheduler assignment stats heat maps (% runs on each core per task)
 
-The main scripts are:
+The capture script leverges the Linux perf tool to capture events of interest (such as context switches, and kvm events).
+For a more efficient analysis of the traces, it allows the user to add custom plugins to annotate task names on the fly.
+One example of plugin included in the repository is the OpenStack plugin, that allows the capture tool to annotate task names based on their OpenStack instance name which often
+provides much more contextual information about the task (such as instance type and service chaining metadata whne used in the NFV context).
 
-- perf-capture.py
-- perf-sched.py
+
 
 
 Perftools workflow
@@ -40,7 +42,7 @@ In this case you will need to recompile perf with the proper compile flag, which
 Virtual environment
 ^^^^^^^^^^^^^^^^^^^
 
-You may want to create a python virtual environment if you prefer to have isolation of python installations (this is optional).
+You may want to create a python virtual environment if you prefer to have isolation of python installations (this is recommended but optional).
 For example:
 
 .. code::
@@ -79,3 +81,7 @@ Verifying your installation
 
 Capturing traces (perf-capture.py)
 ----------------------------------
+
+
+OpenStack Plug-In
+-----------------

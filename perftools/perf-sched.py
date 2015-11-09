@@ -137,6 +137,9 @@ KVM_EXIT_REASONS = [
 ]
 GREEN = "#5ab738"
 RED = "#f22c40"
+BLUE= "#4169E1"
+YELLOW="#FFFF00"
+ORANGE="#FFA500"
 
 def cycle_colors(chunk, palette=Spectral6):
     """ Build a color list just cycling through a given palette.
@@ -289,6 +292,108 @@ def show_task_heatmap(df, task_re, label):
         gp = gridplot(split_list(chart_list, 2))
         show(gp)
 
+def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
+    gb = get_groupby(df, task_re)
+
+    chart_list = []
+    # these are the 2 main events to show for kvm events
+    legend_map_kvm = {
+        'kvm_exit': (BLUE, 'vcpu running (y=vcpu run time)', False),
+        'kvm_entry': (ORANGE, 'vcpu not running (y=kvm+sleep time)', False)
+    }
+    # context switch events
+    legend_map_ctx_sw = {
+        'sched__sched_stat_sleep': (RED, 'wakeup from sleep (y=sleep time)', True),
+        'sched__sched_switch': (GREEN, 'switched out from cpu (y=run time)', True)
+    }
+    if show_kvm and show_ctx_switches:
+        legend_map = dict(legend_map_kvm.items() + legend_map_ctx_sw.items())
+    elif show_kvm:
+        legend_map = legend_map_kvm
+    else:
+        legend_map = legend_map_ctx_sw
+    width = 1000
+    height = 800
+    font_size = '14pt'
+    show_legend = True
+    nb_charts = len(gb.groups)
+    if nb_charts == 0:
+        print 'No selection matching: ' + task_re
+        return
+    if nb_charts > 1:
+        width /= 2
+        height /= 2
+        font_size = '12pt'
+    task_list = gb.groups.keys()
+    task_list.sort()
+    show_legend = True
+
+    for task in task_list:
+        p = figure(plot_width=width, plot_height=height, y_axis_type="log",
+                   title_text_font_size=font_size,
+                   title_text_font_style="bold")
+        p.xaxis.axis_label = 'time (usecs)'
+        p.yaxis.axis_label = 'duration (usecs)'
+        p.legend.orientation = "bottom_right"
+        p.xaxis.axis_label_text_font_size = "10pt"
+        p.yaxis.axis_label_text_font_size = "10pt"
+        if label:
+            p.title = "KVM entries and exits for %s (%s)" % (task, label)
+            label = None
+        else:
+            p.title = "KVM entries and exits for %s" % (task)
+        p.ygrid.minor_grid_line_color = 'navy'
+        p.ygrid.minor_grid_line_alpha = 0.1
+        accumulated_time = {}
+        total_time = 0
+        dfg = gb.get_group(task)
+        # remove any row with zero duration as it confuses the chart library
+        dfg = dfg[dfg['duration'] > 0]
+        event_list = legend_map.keys()
+        event_list.sort()
+        for event in event_list:
+            dfe = dfg[dfg.event == event]
+            count = len(dfe)
+            color, legend_text, cx_sw = legend_map[event]
+            if show_legend:
+                legend_text = '%s (%d)' % (legend_text, count)
+            elif color == GREEN:
+                legend_text = '(%d)' % (count)
+            else:
+                legend_text = None
+            # there is bug in bokeh when there are too many circles to draw, nothing is visible
+            if len(dfe) > 50000:
+                dfe = dfe[:50000]
+                print 'Series for %s display truncated to 50000 events' % (event)
+            if cx_sw:
+                draw_shape = p.circle
+                size = get_disc_size(count)
+            else:
+                draw_shape = p.diamond
+                size = get_disc_size(count)+4
+
+            draw_shape('usecs', 'duration', source=ColumnDataSource(dfe),
+                       size=size,
+                       color=color,
+                       alpha=0.3,
+                       legend=legend_text)
+            event_duration = dfe['duration'].sum()
+            accumulated_time[event] = event_duration
+            total_time += event_duration
+        chart_list.append(p)
+        show_legend = False
+
+    # specify how to output the plot(s)
+    output_html('kvm', task_re)
+
+    # display the figure
+    if len(chart_list) == 1:
+        show(chart_list[0])
+    else:
+        # split the list into an array of rows with 2 charts per row
+        gp = gridplot(split_list(chart_list, 2))
+        show(gp)
+
 def show_cpu(df, task_re, label):
     # remove unneeded columns
     df.drop('next_pid', axis=1, inplace=True)
@@ -389,7 +494,7 @@ def show_exit_type_count(df_all_exits, df_last_exits):
     res.sort_values('total count', inplace=True, ascending=False)
     print res
 
-def show_kvm_heatmap(df, task_re, label):
+def show_kvm_heatmap0(df, task_re, label):
     gb = get_groupby(df, task_re)
 
     chart_list = []
@@ -470,6 +575,7 @@ def show_kvm_heatmap(df, task_re, label):
         # split the list into an array of rows with 2 charts per row
         gp = gridplot(split_list(chart_list, 2))
         show(gp)
+
 
 def show_kvm_exit_types(df, task_re, label):
     df = df[df['event'] == 'kvm_exit']
@@ -641,11 +747,7 @@ def convert(df, new_cdict):
 
 parser = OptionParser(usage="usage: %prog [options] <cdict_file>")
 
-parser.add_option("-t", "--task",
-                  dest="task",
-                  metavar="task ID or name",
-                  help="show thread context switch heat map (use numeric tid or task name regex)"
-                  )
+
 parser.add_option("--successors-of",
                   dest="successor_of_task",
                   help="show list of successors of given tid or task name"
@@ -662,16 +764,26 @@ parser.add_option("--core-locality",
                   metavar="task name (regex)",
                   help="show core locality chart for tasks with matching name"
                   )
-parser.add_option("--cpu",
-                  dest="cpu",
+parser.add_option("--runs",
+                  dest="runs",
                   action="store",
                   metavar="task name (regex)",
-                  help="show cpu utilization for tasks with matching name"
+                  help="show % runs on each core for selected tasks"
+                  )
+parser.add_option("-t", "--task",
+                  dest="task",
+                  metavar="task name (regex)",
+                  help="show thread context switch heat map (use numeric tid or task name regex)"
                   )
 parser.add_option("--kvm-exits",
                   dest="kvm_exits",
                   metavar="task name (regex)",
                   help="show thread kvm exits heat map"
+                  )
+parser.add_option("--tk",
+                  dest="tk",
+                  metavar="task name (regex)",
+                  help="show thread context switches and kvm exits heat map"
                   )
 parser.add_option("--kvm-exit-types",
                   dest="kvm_exit_types",
@@ -768,12 +880,14 @@ if options.show_tids:
     print res
 elif options.core_loc:
     show_core_locality(df, options.core_loc, options.label)
-elif options.cpu:
+elif options.runs:
     show_cpu(df, options.cpu, options.label)
 elif options.task:
-    show_task_heatmap(df, options.task, options.label)
+    show_sw_heatmap(df, options.task, options.label, True, False)
 elif options.kvm_exits:
-    show_kvm_heatmap(df, options.kvm_exits, options.label)
+    show_sw_heatmap(df, options.kvm_exits, options.label, False, True)
+elif options.tk:
+    show_sw_heatmap(df, options.tk, options.label, True, True)
 elif options.kvm_exit_types:
     show_kvm_exit_types(df, options.kvm_exit_types, options.label)
 elif options.successor_of_task:
