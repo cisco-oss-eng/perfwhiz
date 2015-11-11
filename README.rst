@@ -10,7 +10,7 @@ leveraging the Linux perf tool and generate from the perf traces:
 - KVM exit heat maps
 - KVM exit types distribution (bar charts)
 - core locality heat maps (where does task run over time)
-- task scheduler assignment stats heat maps (% runs on each core per task)
+- task scheduler core assignment heat maps (run time % on each core per task)
 
 The capture script leverges the Linux perf tool to capture events of interest (such as context switches, and kvm events).
 For a more efficient analysis of the traces, it allows the user to add custom plugins to annotate task names on the fly.

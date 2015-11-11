@@ -18,6 +18,7 @@
 # ---------------------------------------------------------
 
 
+from collections import OrderedDict
 from optparse import OptionParser
 import os
 import sys
@@ -41,11 +42,12 @@ import numpy as np
 
 from bokeh.plotting import figure, output_file, show
 from bokeh.models.sources import ColumnDataSource
+from bokeh.models import HoverTool
 from bokeh.palettes import Spectral6
 from bokeh.io import gridplot
 from bokeh._legacy_charts import HeatMap
 from bokeh.charts import Bar
-from bokeh.palettes import YlOrRd9
+from bokeh.palettes import YlOrRd9, GnBu8
 
 # Global variables
 
@@ -137,9 +139,10 @@ KVM_EXIT_REASONS = [
 ]
 GREEN = "#5ab738"
 RED = "#f22c40"
-BLUE= "#4169E1"
-YELLOW="#FFFF00"
-ORANGE="#FFA500"
+BLUE = "#4169E1"
+YELLOW = "#FFFF00"
+ORANGE = "#FFA500"
+GRAY = "#b5cbc5"
 
 def cycle_colors(chunk, palette=Spectral6):
     """ Build a color list just cycling through a given palette.
@@ -218,80 +221,6 @@ def split_list(l, n):
     n = max(1, n)
     return [l[i:i + n] for i in range(0, len(l), n)]
 
-def show_task_heatmap(df, task_re, label):
-
-    # dff = df[df['task_name'].str.match(task_re)]
-    # dff = dff[dff['event'].str.match('sched__sched')]
-    # print dff
-    gb = get_groupby(df, task_re)
-
-    # these are the 2 main events to show
-    legend_map = {
-        'sched__sched_stat_sleep': (RED, 'wakeup from sleep (y=sleep time)'),
-        'sched__sched_switch': (GREEN, 'switched out from cpu (y=run time)')
-    }
-    chart_list = []
-    width = 1000
-    height = 800
-    font_size = '14pt'
-    show_legend = True
-    nb_charts = len(gb.groups)
-    if nb_charts == 0:
-        print 'No selection matching: ' + task_re
-        return
-    if nb_charts > 1:
-        width /= 2
-        height /= 2
-        font_size = '12pt'
-    task_list = gb.groups.keys()
-    task_list.sort()
-    for task in task_list:
-        p = figure(plot_width=width, plot_height=height, y_axis_type="log",
-                   title_text_font_size=font_size,
-                   title_text_font_style="bold")
-        p.xaxis.axis_label = 'time (usecs)'
-        p.yaxis.axis_label = 'duration (usecs)'
-        p.legend.orientation = "bottom_right"
-        p.xaxis.axis_label_text_font_size = "10pt"
-        p.yaxis.axis_label_text_font_size = "10pt"
-        if label:
-            p.title = "Context switches %s (%s)" % (task, label)
-            label = None
-        else:
-            p.title = "Context switches %s" % (task)
-        p.ygrid.minor_grid_line_color = 'navy'
-        p.ygrid.minor_grid_line_alpha = 0.1
-        dfg = gb.get_group(task)
-        for event in legend_map:
-            dfe = dfg[dfg.event == event]
-            dfe = dfe[dfe['duration'] > 0]
-            count = len(dfe)
-            color, legend_text = legend_map[event]
-            if show_legend:
-                legend_text = '%s (%d)' % (legend_text, count)
-            elif color == GREEN:
-                legend_text = '(%d)' % (count)
-            else:
-                legend_text = None
-            p.circle('usecs', 'duration', source=ColumnDataSource(dfe),
-                     size=get_disc_size(count),
-                     color=color,
-                     alpha=0.3,
-                     legend=legend_text)
-        show_legend = False
-        chart_list.append(p)
-
-    # specify how to output the plot(s)
-    output_html('thm', task_re)
-
-    # display the figure
-    if len(chart_list) == 1:
-        show(chart_list[0])
-    else:
-        # split the list into an array of rows with 2 charts per row
-        gp = gridplot(split_list(chart_list, 2))
-        show(gp)
-
 def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
     gb = get_groupby(df, task_re)
 
@@ -308,10 +237,13 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
     }
     if show_kvm and show_ctx_switches:
         legend_map = dict(legend_map_kvm.items() + legend_map_ctx_sw.items())
+        title = "Scheduler and KVM events"
     elif show_kvm:
         legend_map = legend_map_kvm
+        title = "KVM events"
     else:
         legend_map = legend_map_ctx_sw
+        title = "Scheduler events"
     width = 1000
     height = 800
     font_size = '14pt'
@@ -338,10 +270,10 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
         p.xaxis.axis_label_text_font_size = "10pt"
         p.yaxis.axis_label_text_font_size = "10pt"
         if label:
-            p.title = "KVM entries and exits for %s (%s)" % (task, label)
+            p.title = "%s for %s (%s)" % (title, task, label)
             label = None
         else:
-            p.title = "KVM entries and exits for %s" % (task)
+            p.title = task
         p.ygrid.minor_grid_line_color = 'navy'
         p.ygrid.minor_grid_line_alpha = 0.1
         accumulated_time = {}
@@ -370,7 +302,7 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
                 size = get_disc_size(count)
             else:
                 draw_shape = p.diamond
-                size = get_disc_size(count)+4
+                size = get_disc_size(count) + 4
 
             draw_shape('usecs', 'duration', source=ColumnDataSource(dfe),
                        size=size,
@@ -394,7 +326,18 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
         gp = gridplot(split_list(chart_list, 2))
         show(gp)
 
-def show_cpu(df, task_re, label):
+def get_color(percent, palette):
+    try:
+        percent = int(percent)
+    except ValueError:
+        # swapper tasks always have NaN since their duration is always 0
+        percent = 100
+    if percent == 0:
+        return '#ffffff'
+    max_index = len(palette) - 1
+    return palette[int(percent * max_index / 100)]
+
+def show_runs(df, task_re, label):
     # remove unneeded columns
     df.drop('next_pid', axis=1, inplace=True)
     df.drop('pid', axis=1, inplace=True)
@@ -405,7 +348,6 @@ def show_cpu(df, task_re, label):
     df = df[df.event == 'sched__sched_switch']
     df.drop('event', axis=1, inplace=True)
     df = df[df['task_name'].str.match(task_re)]
-
     gb = df.groupby(['task_name', 'cpu'], as_index=False)
     df = gb.aggregate(np.sum)
     # at this point we have a df that looks like this:
@@ -443,33 +385,74 @@ def show_cpu(df, task_re, label):
     # Add a % column
     dfm['percent'] = (dfm['duration'] * 100) / dfm['total']
     dfm.percent = dfm.percent.round()
+    # many core-pinned system tasks have a duration of 0 (swapper, watchdog...)
+    dfm.fillna(100, inplace=True)
 
     # now add 1 column per core# to gather the % for each task spent on that core
     # first get the list of cores
     max_core = dfm.cpu.max()
-    core_list = range(max_core + 1)
-    for core in core_list:
-        dfm[str(core)] = dfm.apply(lambda row: row['percent'] if row['cpu'] == core else 0, axis=1)
-    dfm.drop(['percent', 'duration', 'total', 'cpu'], axis=1, inplace=True)
+    # round up to next mutliple of 4 - 1
+    # 0..3 -> 3
+    # 4..7 -> 7 etc
+    max_core |= 0x03
+    max_core = max(max_core, 3)
+    core_list = [str(x) for x in range(max_core + 1)]
+    dfm['cpu'] = dfm['cpu'].astype(str)
+    # for core in core_list:
+    #    dfm[str(core)] = dfm.apply(lambda row: row['percent'] if row['cpu'] == core else 0, axis=1)
+    dfm.drop(['duration', 'total'], axis=1, inplace=True)
+    # replace ':' with '_' as it would cause bokeh to misplace the labels on the chart
+    dfm['task_name'] = dfm['task_name'].str.replace(':', '_')
+
     normalize_df_task_name(dfm)
 
-    # group by task name and add up all core percentage
-    gb = dfm.groupby('task_name')
-    dfm = gb.aggregate(np.sum)
+    # Add a column for the Y axis
+    # each task name should be associated to a unique Y index
+    # Get a unique list of task names sorted
+    task_list = pandas.unique(dfm.task_name.ravel()).tolist()
+    task_list.sort()
 
-    # print heatmap
+    # Add a color column
+    palette = GnBu8[::-1]  # Reverse the color order so dark is highest value
+    palette.pop(0)         # first one is too light
 
-    title = "%% Core Usage (%s)" % (label)
-    palette = YlOrRd9[::-1]  # Reverse the color order so dark red is highest value
     # zero % will use white
-    # palette.insert(0, '#ffffff')
-    palette[0] = '#ffffff'
-    hm = HeatMap(dfm, title=title, width=800, height=120 + len(dfm) * 16, palette=palette,
-                 xlabel='core', responsive=False)
-    # specify how to output the plot(s), title_text_font_size='14pt'
-    output_html('core', task_re)
-    show(hm)
+    # palette[0] = '#ffffff'
+    dfm['color'] = dfm.apply(lambda row: get_color(row['percent'],
+                                                   palette), axis=1)
+    title = "Task Run Time %% per Core (%s)" % (label)
 
+    TOOLS = "resize,hover,save"
+    p = figure(title=title, tools=TOOLS, x_range=core_list, y_range=task_list)
+    p.plot_width = 1000
+    p.plot_height = 80 + len(task_list) * 20
+    p.toolbar_location = "left"
+    source = ColumnDataSource(dfm)
+    p.rect("cpu", "task_name", width=0.9, height=0.8, source=source, fill_alpha=0.6, color="color")
+    p.grid.grid_line_color = None
+    # trace separator lines to isolate blocks across core groups (numa sockets) and task-like names
+    max_y = len(task_list)
+    # trace a vertical line every 8 cores
+    for seg_x in range(8, max_core, 8):
+        p.segment(x0=[seg_x + 0.5], y0=[0], x1=[seg_x + 0.5],
+                  y1=[max_y + 0.5], color=GRAY, line_width=2)
+    prev_task_name = None
+    for y in range(max_y):
+        cur_task_name = task_list[y]
+        if prev_task_name:
+            if prev_task_name[0:3] != cur_task_name[0:3]:
+                p.segment(x0=[0], y0=[y + 0.5], x1=[max_core + 1.5],
+                          y1=[y + 0.5], color=GRAY, line_width=0.5)
+        prev_task_name = task_list[y]
+
+    hover = p.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([
+        ("task", "@task_name"),
+        ("core", "@cpu"),
+        ("% run time", "@percent")
+    ])
+    output_html('core', task_re)
+    show(p)
 
 def convert_exit_df(df, label):
     # fill in the error reason text from the code in
@@ -493,89 +476,6 @@ def show_exit_type_count(df_all_exits, df_last_exits):
     res.fillna(0, inplace=True)
     res.sort_values('total count', inplace=True, ascending=False)
     print res
-
-def show_kvm_heatmap0(df, task_re, label):
-    gb = get_groupby(df, task_re)
-
-    chart_list = []
-    # these are the 2 main events to show
-    legend_map = {
-        'kvm_exit': (GREEN, 'vcpu running (y=vcpu run time)'),
-        'kvm_entry': (RED, 'vcpu not running (y=kvm+sleep time)')
-    }
-    width = 1000
-    height = 800
-    font_size = '14pt'
-    show_legend = True
-    nb_charts = len(gb.groups)
-    if nb_charts == 0:
-        print 'No selection matching: ' + task_re
-        return
-    if nb_charts > 1:
-        width /= 2
-        height /= 2
-        font_size = '12pt'
-    task_list = gb.groups.keys()
-    task_list.sort()
-    show_legend = True
-
-    for task in task_list:
-        p = figure(plot_width=width, plot_height=height, y_axis_type="log",
-                   title_text_font_size=font_size,
-                   title_text_font_style="bold")
-        p.xaxis.axis_label = 'time (usecs)'
-        p.yaxis.axis_label = 'duration (usecs)'
-        p.legend.orientation = "bottom_right"
-        p.xaxis.axis_label_text_font_size = "10pt"
-        p.yaxis.axis_label_text_font_size = "10pt"
-        if label:
-            p.title = "KVM entries and exits for %s (%s)" % (task, label)
-            label = None
-        else:
-            p.title = "KVM entries and exits for %s" % (task)
-        p.ygrid.minor_grid_line_color = 'navy'
-        p.ygrid.minor_grid_line_alpha = 0.1
-        accumulated_time = {}
-        total_time = 0
-        dfg = gb.get_group(task)
-        # remove any row with zero duration as it confuses the chart library
-        dfg = dfg[dfg['duration'] > 0]
-        for event in legend_map:
-            dfe = dfg[dfg.event == event]
-            count = len(dfe)
-            color, legend_text = legend_map[event]
-            if show_legend:
-                legend_text = '%s (%d)' % (legend_text, count)
-            elif color == GREEN:
-                legend_text = '(%d)' % (count)
-            else:
-                legend_text = None
-            # there is bug in bokeh when there are too many circles to draw, nothing is visible
-            if len(dfe) > 50000:
-                dfe = dfe[:50000]
-                print 'Series for %s display truncated to 50000 events' % (event)
-            p.circle('usecs', 'duration', source=ColumnDataSource(dfe),
-                     size=get_disc_size(count),
-                     color=color,
-                     alpha=0.3,
-                     legend=legend_text)
-            event_duration = dfe['duration'].sum()
-            accumulated_time[event] = event_duration
-            total_time += event_duration
-        chart_list.append(p)
-        show_legend = False
-
-    # specify how to output the plot(s)
-    output_html('kvm', task_re)
-
-    # display the figure
-    if len(chart_list) == 1:
-        show(chart_list[0])
-    else:
-        # split the list into an array of rows with 2 charts per row
-        gp = gridplot(split_list(chart_list, 2))
-        show(gp)
-
 
 def show_kvm_exit_types(df, task_re, label):
     df = df[df['event'] == 'kvm_exit']
@@ -813,26 +713,6 @@ parser.add_option("--convert",
                   )
 (options, args) = parser.parse_args()
 
-'''
-df = DataFrame(  {'AAA': [0, 0, 0, 1,2,3,4,5,6,7,8,9,10],
-                  'tid': [0, 0, 5, 5,5,5,5,5,5,5,5,5,5],
-                  'next_comm': [0,0,0,0,44,0,12,0,0,0,0,0,0],
-                  'event': ['any', 'kvm_exit',
-                            'kvm_entry',
-                            'kvm_exit','kvm_exit','sched__sched_switch',
-                            'kvm_exit', 'sched__sched_switch',
-                            'kvm_exit', 'kvm_exit', 'kvm_exit',
-                            'sched__sched_switchB', 'kvm_exit']})
-print df
-#show_last_exit_reasons_before_switches(df, 5)
-gb = df.groupby('event')
-print gb
-for category in gb.groups:
-    print category
-    print gb.get_group(category)
-sys.exit(0)
-'''
-
 if options.from_time:
     from_time = int(options.from_time) * 1000
 if options.cap_time:
@@ -881,7 +761,7 @@ if options.show_tids:
 elif options.core_loc:
     show_core_locality(df, options.core_loc, options.label)
 elif options.runs:
-    show_cpu(df, options.cpu, options.label)
+    show_runs(df, options.runs, options.label)
 elif options.task:
     show_sw_heatmap(df, options.task, options.label, True, False)
 elif options.kvm_exits:

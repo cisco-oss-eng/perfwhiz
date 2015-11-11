@@ -41,7 +41,7 @@ instance_re = re.compile('ESC_Day0-3__\d*__MT__MTPerftest.FULL.(\d*)ESC_Day0-31.
 # A dict of full names indexed by the uuid
 #
 # ESC_Day0-3__62940__MT__MTPerftest_FULL_01ESC_Day0-31.1__0__CSR__0
-# becomes 'CSR.1'
+# becomes 'CSR.01'
 by_uuid = {}
 
 def decode_instance_name(name):
@@ -81,7 +81,7 @@ def plugin_init(opts=None):
     for server in servers:
         chain_id, nvf = decode_instance_name(server.name)
         if chain_id:
-            full_name = '%s.%d' % (nvf, chain_id)
+            full_name = '%s.%02d' % (nvf, chain_id)
             by_uuid[server.id] = full_name
             count += 1
     print 'Plugin loaded with %d service chain names from Nova' % (count)

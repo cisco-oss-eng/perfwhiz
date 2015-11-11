@@ -14,6 +14,8 @@ import os
 import sys
 from os.path import expanduser
 import re
+
+# Location of the perf python helper files
 try:
     sys.path.append(os.environ['PERF_EXEC_PATH'] +
                     '/scripts/python/perf-script-Util/lib/Perf/Trace')
