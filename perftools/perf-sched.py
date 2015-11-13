@@ -47,7 +47,7 @@ from bokeh.palettes import Spectral6
 from bokeh.io import gridplot
 from bokeh._legacy_charts import HeatMap
 from bokeh.charts import Bar
-from bokeh.palettes import YlOrRd9, GnBu8
+from bokeh.palettes import GnBu8, YlOrRd9
 
 # Global variables
 
@@ -337,7 +337,7 @@ def get_color(percent, palette):
     max_index = len(palette) - 1
     return palette[int(percent * max_index / 100)]
 
-def show_runs(df, task_re, label):
+def show_core_runs(df, task_re, label, duration):
     # remove unneeded columns
     df.drop('next_pid', axis=1, inplace=True)
     df.drop('pid', axis=1, inplace=True)
@@ -348,8 +348,7 @@ def show_runs(df, task_re, label):
     df = df[df.event == 'sched__sched_switch']
     df.drop('event', axis=1, inplace=True)
     df = df[df['task_name'].str.match(task_re)]
-    gb = df.groupby(['task_name', 'cpu'], as_index=False)
-    df = gb.aggregate(np.sum)
+
     # at this point we have a df that looks like this:
     #         task_name  cpu  duration
     # 0     ASA.1.vcpu0    8      7954
@@ -365,28 +364,50 @@ def show_runs(df, task_re, label):
     # 10   ASA.10.vcpu0   10     15624
     # 11   ASA.10.vcpu0   11      6925
     # etc...
-    dfsum = df.drop('cpu', axis=1)
-    gb = dfsum.groupby('task_name', as_index=False)
-    dfsum = gb.aggregate(np.sum)
-    # dfsum is the sum of all duration for given task
-    # 0    ASA.1.vcpu0     78152
-    # 1   ASA.10.vcpu0     65637
-    # 2   ASA.11.vcpu0     81525
-    # 3   ASA.12.vcpu0     56488
-    dfsum.rename(columns={'duration': 'total'}, inplace=True)
+    gb = df.groupby(['task_name', 'cpu'], as_index=False)
+    if duration:
+        # add duration values
+        df = gb.aggregate(np.sum)
+        dfsum = df.drop('cpu', axis=1)
+        gb = dfsum.groupby('task_name', as_index=False)
+        dfsum = gb.aggregate(np.sum)
+        # dfsum is the sum of all duration for given task
+        # 0    ASA.1.vcpu0     78152
+        # 1   ASA.10.vcpu0     65637
+        # 2   ASA.11.vcpu0     81525
+        # 3   ASA.12.vcpu0     56488
+        dfsum.rename(columns={'duration': 'total'}, inplace=True)
+        # now we need to reinsert that data back to the df
+        dfm = pandas.merge(df, dfsum, on='task_name')
+        #         task_name  cpu  duration  total
+        # 0     ASA.1.vcpu0    8      7954  78152
+        # 1     ASA.1.vcpu0    9      5475  78152
+        # 2     ASA.1.vcpu0   10      4151  78152
 
-    # now we need to reinsert that data back to the df
-    dfm = pandas.merge(df, dfsum, on='task_name')
-    #         task_name  cpu  duration  total
-    # 0     ASA.1.vcpu0    8      7954  78152
-    # 1     ASA.1.vcpu0    9      5475  78152
-    # 2     ASA.1.vcpu0   10      4151  78152
+        # Add a % column
+        dfm['percent'] = (dfm['duration'] * 100) / dfm['total']
+        # many core-pinned system tasks have a duration of 0 (swapper, watchdog...)
+        dfm.fillna(100, inplace=True)
+        dfm.drop(['duration', 'total'], axis=1, inplace=True)
+        tooltip_count = ("% run time", "@percent")
+        title = "Task Run Time %% per Core (%s)" % (label)
+        palette = GnBu8[::-1]  # Reverse the color order so dark is highest value
+        palette.pop(0)         # first one is too light
+    else:
+        # count number of rows with same task and cpu
+        dfm = DataFrame(gb.size())
+        dfm.reset_index(inplace=True)
+        dfm.rename(columns={0: 'count'}, inplace=True)
+        min_count = dfm['count'].min()
+        max_count = dfm['count'].max()
+        spread = max_count - min_count
+        # Add a % column
+        dfm['percent'] = ((dfm['count'] - min_count) * 100) / spread
+        tooltip_count = ("context switches", "@count")
+        title = "Task Context Switches per Core (%s)" % (label)
+        palette = YlOrRd9[::-1]
 
-    # Add a % column
-    dfm['percent'] = (dfm['duration'] * 100) / dfm['total']
     dfm.percent = dfm.percent.round()
-    # many core-pinned system tasks have a duration of 0 (swapper, watchdog...)
-    dfm.fillna(100, inplace=True)
 
     # now add 1 column per core# to gather the % for each task spent on that core
     # first get the list of cores
@@ -398,9 +419,6 @@ def show_runs(df, task_re, label):
     max_core = max(max_core, 3)
     core_list = [str(x) for x in range(max_core + 1)]
     dfm['cpu'] = dfm['cpu'].astype(str)
-    # for core in core_list:
-    #    dfm[str(core)] = dfm.apply(lambda row: row['percent'] if row['cpu'] == core else 0, axis=1)
-    dfm.drop(['duration', 'total'], axis=1, inplace=True)
     # replace ':' with '_' as it would cause bokeh to misplace the labels on the chart
     dfm['task_name'] = dfm['task_name'].str.replace(':', '_')
 
@@ -413,14 +431,10 @@ def show_runs(df, task_re, label):
     task_list.sort()
 
     # Add a color column
-    palette = GnBu8[::-1]  # Reverse the color order so dark is highest value
-    palette.pop(0)         # first one is too light
-
     # zero % will use white
     # palette[0] = '#ffffff'
     dfm['color'] = dfm.apply(lambda row: get_color(row['percent'],
                                                    palette), axis=1)
-    title = "Task Run Time %% per Core (%s)" % (label)
 
     TOOLS = "resize,hover,save"
     p = figure(title=title, tools=TOOLS, x_range=core_list, y_range=task_list)
@@ -449,7 +463,7 @@ def show_runs(df, task_re, label):
     hover.tooltips = OrderedDict([
         ("task", "@task_name"),
         ("core", "@cpu"),
-        ("% run time", "@percent")
+        tooltip_count
     ])
     output_html('core', task_re)
     show(p)
@@ -662,13 +676,19 @@ parser.add_option("--core-locality",
                   dest="core_loc",
                   action="store",
                   metavar="task name (regex)",
-                  help="show core locality chart for tasks with matching name"
+                  help="show core locality heat map for tasks with matching name"
                   )
-parser.add_option("--runs",
-                  dest="runs",
+parser.add_option("--core-runtime",
+                  dest="core_runtime",
                   action="store",
                   metavar="task name (regex)",
-                  help="show % runs on each core for selected tasks"
+                  help="show % runtime on each core for selected tasks"
+                  )
+parser.add_option("--core-switch-count",
+                  dest="core_switches",
+                  action="store",
+                  metavar="task name (regex)",
+                  help="show context switch count on each core for selected tasks"
                   )
 parser.add_option("-t", "--task",
                   dest="task",
@@ -760,8 +780,6 @@ if options.show_tids:
     print res
 elif options.core_loc:
     show_core_locality(df, options.core_loc, options.label)
-elif options.runs:
-    show_runs(df, options.runs, options.label)
 elif options.task:
     show_sw_heatmap(df, options.task, options.label, True, False)
 elif options.kvm_exits:
@@ -774,3 +792,8 @@ elif options.successor_of_task:
     show_successors(df, options.successor_of_task, options.label)
 elif options.convert:
     convert(df, options.convert)
+
+if options.core_runtime:
+    show_core_runs(df, options.core_runtime, options.label, True)
+if options.core_switches:
+    show_core_runs(df, options.core_switches, options.label, False)
