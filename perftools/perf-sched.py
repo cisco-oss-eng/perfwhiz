@@ -57,6 +57,11 @@ from_time = 0
 # cap input file to first cap_time usec, 0 = unlimited
 cap_time = 0
 
+# calculate the time between the 1st entry and the last entry in msec
+def get_time_span_msec(df):
+    min_usec = df['usecs'].min()
+    max_usec = df['usecs'].max()
+    return (max_usec - min_usec)/1000
 
 # For sorting
 # 'CSR.1.vcpu0' => '0001.CSR.vcpu0'
@@ -339,6 +344,8 @@ def get_color(percent, palette):
     return palette[int(percent * max_index / 100)]
 
 def show_core_runs(df, task_re, label, duration):
+    time_span_msec = get_time_span_msec(df)
+
     # remove unneeded columns
     df.drop('next_pid', axis=1, inplace=True)
     df.drop('pid', axis=1, inplace=True)
@@ -391,7 +398,7 @@ def show_core_runs(df, task_re, label, duration):
         dfm.fillna(100, inplace=True)
         dfm.drop(['duration', 'total'], axis=1, inplace=True)
         tooltip_count = ("% run time", "@percent")
-        title = "Task Run Time %% per Core (%s)" % (label)
+        title = "Task Run Time %% per Core (%s, %d msec window)" % (label, time_span_msec)
         palette = GnBu8[::-1]  # Reverse the color order so dark is highest value
         palette.pop(0)         # first one is too light
     else:
@@ -405,7 +412,7 @@ def show_core_runs(df, task_re, label, duration):
         # Add a % column
         dfm['percent'] = ((dfm['count'] - min_count) * 100) / spread
         tooltip_count = ("context switches", "@count")
-        title = "Task Context Switches per Core (%s)" % (label)
+        title = "Task Context Switches per Core (%s, %d msec window)" % (label, time_span_msec)
         palette = YlOrRd9[::-1]
 
     dfm.percent = dfm.percent.round()
@@ -499,6 +506,7 @@ def show_kvm_exit_types(df, task_re, label):
     exit_codes = Series(KVM_EXIT_REASONS)
     # add  new column congaining the exit reason in clear text
     df['exit_reason'] = df['next_comm'].map(exit_codes)
+    time_span_msec = get_time_span_msec(df)
     df.drop(['cpu', 'duration', 'event', 'next_pid', 'pid', 'next_comm', 'usecs'], inplace=True, axis=1)
     # group by task name then exit reasons
     gb = df.groupby(['task_name', 'exit_reason'])
@@ -508,7 +516,7 @@ def show_kvm_exit_types(df, task_re, label):
     df.reset_index(inplace=True)
 
     p = Bar(df, label='task_name', values='count', stack='exit_reason',
-            title="KVM Exit types per task (%s)" % (label),
+            title="KVM Exit types per task (%s, %d msec window)" % (label, time_span_msec),
             legend='top_right',
             width=800, height=800)
 
@@ -809,6 +817,7 @@ if from_time:
     df = df[df['usecs'] >= from_time]
 if cap_time:
     df = df[df['usecs'] <= cap_time]
+
 
 if not options.label:
     options.label = os.path.splitext(os.path.basename(cdict_file))[0]
