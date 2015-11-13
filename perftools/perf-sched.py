@@ -20,6 +20,7 @@
 
 from collections import OrderedDict
 from optparse import OptionParser
+import csv
 import os
 import sys
 import itertools
@@ -507,7 +508,8 @@ def show_kvm_exit_types(df, task_re, label):
     df.reset_index(inplace=True)
 
     p = Bar(df, label='task_name', values='count', stack='exit_reason',
-            title="KVM Exit types per task", legend='top_right',
+            title="KVM Exit types per task (%s)" % (label),
+            legend='top_right',
             width=800, height=800)
 
     # specify how to output the plot(s)
@@ -656,6 +658,35 @@ def convert(df, new_cdict):
         print 'Compressed dictionary written to %s %d entries size=%d bytes' % \
               (new_cdict, len(df), len(compressed))
 
+def remap(perf_dict, csv_map):
+    # a mapping dict of task names indexed by the tid
+    map_dict = {}
+    print 'Remapping task names...'
+    with open(csv_map, 'r') as ff:
+        # 19236,instance-000019f4,emulator,8f81e3a1-3ebd-4015-bbee-e291f0672d02,FULL,5,CSR
+        reader = csv.DictReader(ff, fieldnames=['tid', 'libvirt_id', 'thread_type', 'uuid', 'chain_type', 'chain_id', 'nvf_name'])
+        for row in reader:
+            task_name = '%s.%02d.%s' % (row['nvf_name'], int(row['chain_id']), row['thread_type'])
+            map_dict[int(row['tid'])] = task_name
+    pids = perf_dict['pid']
+    names = perf_dict['task_name']
+    next_pids = perf_dict['next_pid']
+    next_comms = perf_dict['next_comm']
+    count = 0
+    for index in xrange(len(pids)):
+        try:
+            new_task_name = map_dict[pids[index]]
+            names[index] = new_task_name
+            count += 1
+        except KeyError:
+            pass
+        try:
+            new_task_name = map_dict[next_pids[index]]
+            next_comms[index] = new_task_name
+            count += 1
+        except KeyError:
+            pass
+    print 'Remapped %d task names' % (count)
 
 # ---------------------------------- MAIN -----------------------------------------
 
@@ -731,6 +762,12 @@ parser.add_option("--convert",
                   metavar="new cdict file",
                   help="migrate to new encoding with runtime aggregation into switch"
                   )
+parser.add_option("--map",
+                  dest="map",
+                  action="store",
+                  metavar="mapping csv file",
+                  help="remap task names from mapping csv file"
+                  )
 (options, args) = parser.parse_args()
 
 if options.from_time:
@@ -760,6 +797,9 @@ try:
 except Exception:
     # old serialization format
     perf_dict = marshal.loads(decomp)
+
+if options.map:
+    remap(perf_dict, options.map)
 
 df = DataFrame(perf_dict)
 html_file = cdict_file.replace('.cdict', '')
@@ -792,6 +832,7 @@ elif options.successor_of_task:
     show_successors(df, options.successor_of_task, options.label)
 elif options.convert:
     convert(df, options.convert)
+
 
 if options.core_runtime:
     show_core_runs(df, options.core_runtime, options.label, True)
