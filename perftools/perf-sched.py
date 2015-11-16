@@ -46,6 +46,7 @@ from bokeh.models.sources import ColumnDataSource
 from bokeh.models import HoverTool
 from bokeh.palettes import Spectral6
 from bokeh.io import gridplot
+from bokeh.io import hplot
 from bokeh._legacy_charts import HeatMap
 from bokeh.charts import Bar
 from bokeh.palettes import GnBu8, YlOrRd9
@@ -61,7 +62,7 @@ cap_time = 0
 def get_time_span_msec(df):
     min_usec = df['usecs'].min()
     max_usec = df['usecs'].max()
-    return (max_usec - min_usec)/1000
+    return (max_usec - min_usec) / 1000
 
 # For sorting
 # 'CSR.1.vcpu0' => '0001.CSR.vcpu0'
@@ -72,7 +73,7 @@ def normalize_task_name(task):
         chain = tokens[1]
         try:
             chain = int(tokens[1])
-            res = '%03d' % (chain)
+            res = '%02d' % (chain)
             tokens.pop(1)
             return res + '.' + '.'.join(tokens)
         except ValueError:
@@ -149,6 +150,7 @@ BLUE = "#4169E1"
 YELLOW = "#FFFF00"
 ORANGE = "#FFA500"
 GRAY = "#b5cbc5"
+WHITE = "#ffffff"
 
 def cycle_colors(chunk, palette=Spectral6):
     """ Build a color list just cycling through a given palette.
@@ -338,10 +340,29 @@ def get_color(percent, palette):
     except ValueError:
         # swapper tasks always have NaN since their duration is always 0
         percent = 100
-    if percent == 0:
-        return '#ffffff'
     max_index = len(palette) - 1
     return palette[int(percent * max_index / 100)]
+
+def get_color_value_list00(min_count, max_count, palette, range_unit):
+    value_list = []
+    color_count = len(palette)
+    increment = float(max_count - min_count) / color_count
+    from_range = np.arange(min_count, max_count, increment).astype(np.int)
+    to_range = list(from_range)
+    to_range.pop(0)
+    to_range = [x - 1 for x in to_range]
+    to_range.append(max_count)
+
+    for fr, tr in zip(from_range, to_range):
+        value_list.append('%d..%d%s' % (fr, tr, range_unit))
+    return value_list
+
+def get_color_value_list(min_count, max_count, palette, range_unit):
+    value_list = []
+    color_count = len(palette)
+    increment = float(max_count - min_count) / color_count
+    value_list = np.arange(min_count, max_count + 1, increment).astype(np.int).astype(str).tolist()
+    return value_list
 
 def show_core_runs(df, task_re, label, duration):
     time_span_msec = get_time_span_msec(df)
@@ -372,6 +393,10 @@ def show_core_runs(df, task_re, label, duration):
     # 10   ASA.10.vcpu0   10     15624
     # 11   ASA.10.vcpu0   11      6925
     # etc...
+    if len(df) == 0:
+        print
+        print 'No selection matching "%s"' % (task_re)
+        return
     gb = df.groupby(['task_name', 'cpu'], as_index=False)
     if duration:
         # add duration values
@@ -394,6 +419,11 @@ def show_core_runs(df, task_re, label, duration):
 
         # Add a % column
         dfm['percent'] = (dfm['duration'] * 100) / dfm['total']
+        # This is for the legend
+        min_count = 0
+        max_count = 100
+        range_unit = '%'
+
         # many core-pinned system tasks have a duration of 0 (swapper, watchdog...)
         dfm.fillna(100, inplace=True)
         dfm.drop(['duration', 'total'], axis=1, inplace=True)
@@ -408,6 +438,7 @@ def show_core_runs(df, task_re, label, duration):
         dfm.rename(columns={0: 'count'}, inplace=True)
         min_count = dfm['count'].min()
         max_count = dfm['count'].max()
+        range_unit = ''
         spread = max_count - min_count
         # Add a % column
         dfm['percent'] = ((dfm['count'] - min_count) * 100) / spread
@@ -450,15 +481,16 @@ def show_core_runs(df, task_re, label, duration):
     p.plot_height = 80 + len(task_list) * 20
     p.toolbar_location = "left"
     source = ColumnDataSource(dfm)
-    p.rect("cpu", "task_name", width=0.9, height=0.8, source=source, fill_alpha=0.6, color="color")
+    p.rect("cpu", "task_name", width=1, height=0.9, source=source, fill_alpha=0.6, color="color")
     p.grid.grid_line_color = None
     # trace separator lines to isolate blocks across core groups (numa sockets) and task-like names
     max_y = len(task_list)
     # trace a vertical line every 8 cores
-    for seg_x in range(8, max_core, 8):
+    for seg_x in range(8, max_core + 7, 8):
         p.segment(x0=[seg_x + 0.5], y0=[0], x1=[seg_x + 0.5],
                   y1=[max_y + 0.5], color=GRAY, line_width=2)
     prev_task_name = None
+    # trace a horizontal line around every group of tasks that have the same first 3 characters
     for y in range(max_y):
         cur_task_name = task_list[y]
         if prev_task_name:
@@ -473,8 +505,32 @@ def show_core_runs(df, task_re, label, duration):
         ("core", "@cpu"),
         tooltip_count
     ])
+
+    # legend to the right, prepare a data source with a x, y and a color column
+    color_value_list = get_color_value_list(min_count, max_count, palette, range_unit)
+    # Add a last entry to display the max value
+    legend_palette = palette + [WHITE]
+    y_values = np.arange(1.5, len(palette) + 2, 1)
+    x_values = np.ones(len(palette) + 1)
+    dfl = DataFrame({'x': x_values, 'y': y_values, 'color': legend_palette})
+
+    legend = figure(tools='', y_range=color_value_list, x_range=['1'], y_axis_location="left")
+    legend.toolbar_location = None
+    source = ColumnDataSource(dfl)
+    # write a white rect at bottom to hide the frame
+    legend.rect(x=[1], y=[1], width=1, height=1, color=WHITE)
+    legend.rect(x='x', y='y', color='color', width=1, height=1, source=source)
+    legend.plot_width = 100
+    legend.plot_height = 250
+    legend.min_border_left = 0
+    legend.grid.grid_line_color = None
+    legend.xaxis.visible = None
+    legend.xaxis.major_tick_line_color = None
+
+    legend.axis.axis_line_color = None
+    p.min_border_right = 0
     output_html('core', task_re)
-    show(p)
+    show(hplot(p, legend))
 
 def convert_exit_df(df, label):
     # fill in the error reason text from the code in
@@ -672,7 +728,8 @@ def remap(perf_dict, csv_map):
     print 'Remapping task names...'
     with open(csv_map, 'r') as ff:
         # 19236,instance-000019f4,emulator,8f81e3a1-3ebd-4015-bbee-e291f0672d02,FULL,5,CSR
-        reader = csv.DictReader(ff, fieldnames=['tid', 'libvirt_id', 'thread_type', 'uuid', 'chain_type', 'chain_id', 'nvf_name'])
+        reader = csv.DictReader(ff, fieldnames=['tid', 'libvirt_id', 'thread_type', 'uuid', 'chain_type',
+                                                'chain_id', 'nvf_name'])
         for row in reader:
             task_name = '%s.%02d.%s' % (row['nvf_name'], int(row['chain_id']), row['thread_type'])
             map_dict[int(row['tid'])] = task_name
