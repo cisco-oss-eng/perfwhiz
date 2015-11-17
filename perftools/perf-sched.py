@@ -343,25 +343,13 @@ def get_color(percent, palette):
     max_index = len(palette) - 1
     return palette[int(percent * max_index / 100)]
 
-def get_color_value_list00(min_count, max_count, palette, range_unit):
-    value_list = []
-    color_count = len(palette)
-    increment = float(max_count - min_count) / color_count
-    from_range = np.arange(min_count, max_count, increment).astype(np.int)
-    to_range = list(from_range)
-    to_range.pop(0)
-    to_range = [x - 1 for x in to_range]
-    to_range.append(max_count)
-
-    for fr, tr in zip(from_range, to_range):
-        value_list.append('%d..%d%s' % (fr, tr, range_unit))
-    return value_list
-
 def get_color_value_list(min_count, max_count, palette, range_unit):
     value_list = []
     color_count = len(palette)
     increment = float(max_count - min_count) / color_count
     value_list = np.arange(min_count, max_count + 1, increment).astype(np.int).astype(str).tolist()
+    if range_unit:
+        value_list = [x + range_unit for x in value_list]
     return value_list
 
 def show_core_runs(df, task_re, label, duration):
@@ -485,7 +473,9 @@ def show_core_runs(df, task_re, label, duration):
     p.plot_height = 80 + len(task_list) * 20
     p.toolbar_location = "left"
     source = ColumnDataSource(dfm)
-    p.rect("cpu", "task_name", width=1, height=0.9, source=source, fill_alpha=0.6, color="color")
+    # the name is to flag these rectangles to enable tooltip hover on them
+    # (and not enable tooltips on the legend patches)
+    p.rect("cpu", "task_name", width=1, height=0.9, source=source, fill_alpha=0.6, color="color", name='patches')
     p.grid.grid_line_color = None
     # trace separator lines to isolate blocks across core groups (numa sockets) and task-like names
     max_y = len(task_list)
@@ -509,6 +499,8 @@ def show_core_runs(df, task_re, label, duration):
         ("core", "@cpu"),
         tooltip_count
     ])
+    # only enable tooltip on rectangles with name 'patches'
+    hover.names = ['patches']
 
     # legend to the right
     # we try to center the legend vertically
