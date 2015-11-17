@@ -375,7 +375,7 @@ def show_core_runs(df, task_re, label, duration):
 
     # filter out all events except the switch events
     df = df[df.event == 'sched__sched_switch']
-    df.drop('event', axis=1, inplace=True)
+    df = df.drop('event', axis=1)
     df = df[df['task_name'].str.match(task_re)]
 
     # at this point we have a df that looks like this:
@@ -457,6 +457,8 @@ def show_core_runs(df, task_re, label, duration):
     max_core |= 0x03
     max_core = max(max_core, 3)
     core_list = [str(x) for x in range(max_core + 1)]
+    # make room for the legend by adding 3 empty columns
+    core_list += ['', '', '']
     dfm['cpu'] = dfm['cpu'].astype(str)
     # replace ':' with '_' as it would cause bokeh to misplace the labels on the chart
     dfm['task_name'] = dfm['task_name'].str.replace(':', '_')
@@ -470,11 +472,13 @@ def show_core_runs(df, task_re, label, duration):
     task_list.sort()
 
     # Add a color column
-    # zero % will use white
-    # palette[0] = '#ffffff'
     dfm['color'] = dfm.apply(lambda row: get_color(row['percent'],
                                                    palette), axis=1)
-
+    # make enough vertical space for the legend
+    # the legend needs 1 row per palette color + 1 to fit the max value
+    # so we need at least len(palette) + 1 rows
+    if len(task_list) < len(palette) + 1:
+        task_list += ['' for _ in range(len(palette) + 1 - len(task_list))]
     TOOLS = "resize,hover,save"
     p = figure(title=title, tools=TOOLS, x_range=core_list, y_range=task_list)
     p.plot_width = 1000
@@ -506,31 +510,35 @@ def show_core_runs(df, task_re, label, duration):
         tooltip_count
     ])
 
-    # legend to the right, prepare a data source with a x, y and a color column
-    color_value_list = get_color_value_list(min_count, max_count, palette, range_unit)
-    # Add a last entry to display the max value
-    legend_palette = palette + [WHITE]
-    y_values = np.arange(1.5, len(palette) + 2, 1)
-    x_values = np.ones(len(palette) + 1)
-    dfl = DataFrame({'x': x_values, 'y': y_values, 'color': legend_palette})
+    # legend to the right
+    # we try to center the legend vertically
+    legend_base_y = 0
+    palette_len = len(palette)
+    if max_y > palette_len + 1:
+        legend_base_y = (max_y - palette_len - 1) // 2
 
-    legend = figure(tools='', y_range=color_value_list, x_range=['1'], y_axis_location="left")
-    legend.toolbar_location = None
+    # pass 1 is to draw the color patches
+    # prepare a data source with a x, y and a color column
+    x_values = np.empty(palette_len)
+    x_values.fill(max_core + 2.5)
+    y_values = np.arange(legend_base_y + 1.5, legend_base_y + palette_len + 1, 1)
+    dfl = DataFrame({'x': x_values, 'y': y_values, 'color': palette})
     source = ColumnDataSource(dfl)
-    # write a white rect at bottom to hide the frame
-    legend.rect(x=[1], y=[1], width=1, height=1, color=WHITE)
-    legend.rect(x='x', y='y', color='color', width=1, height=1, source=source)
-    legend.plot_width = 100
-    legend.plot_height = 250
-    legend.min_border_left = 0
-    legend.grid.grid_line_color = None
-    legend.xaxis.visible = None
-    legend.xaxis.major_tick_line_color = None
+    p.rect(x='x', y='y', color='color', width=1, height=1, source=source)
 
-    legend.axis.axis_line_color = None
-    p.min_border_right = 0
+    # pass 2 is to draw the text describing the ranges for the color patches
+    color_value_list = get_color_value_list(min_count, max_count, palette, range_unit)
+    x_values = np.empty(len(color_value_list))
+    x_values.fill(max_core + 3.1)
+    y_values = np.arange(legend_base_y + 0.7, legend_base_y + len(color_value_list), 1)
+
+    dfl = DataFrame({'x': x_values, 'y': y_values, 'color_values': color_value_list})
+    source = ColumnDataSource(dfl)
+    p.text(x='x', y='y', text='color_values', source=source,
+           text_font_size='8pt')
+
     output_html('core', task_re)
-    show(hplot(p, legend))
+    show(p)
 
 def convert_exit_df(df, label):
     # fill in the error reason text from the code in
