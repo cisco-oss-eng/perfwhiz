@@ -58,6 +58,13 @@ from_time = 0
 # cap input file to first cap_time usec, 0 = unlimited
 cap_time = 0
 
+# Standard title attribute for all figures
+title_style = {'title_text_font_size': '12pt',
+               'title_text_font_style': 'bold'}
+
+grid_title_style = {'title_text_font_size': '10pt',
+                    'title_text_font_style': 'bold'}
+
 # calculate the time between the 1st entry and the last entry in msec
 def get_time_span_msec(df):
     min_usec = df['usecs'].min()
@@ -254,7 +261,6 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
         title = "Scheduler events"
     width = 1000
     height = 800
-    font_size = '14pt'
     show_legend = True
     nb_charts = len(gb.groups)
     if nb_charts == 0:
@@ -263,15 +269,15 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
     if nb_charts > 1:
         width /= 2
         height /= 2
-        font_size = '12pt'
+        tstyle = grid_title_style
+    else:
+        tstyle = title_style
     task_list = gb.groups.keys()
     task_list.sort()
     show_legend = True
 
     for task in task_list:
-        p = figure(plot_width=width, plot_height=height, y_axis_type="log",
-                   title_text_font_size=font_size,
-                   title_text_font_style="bold")
+        p = figure(plot_width=width, plot_height=height, y_axis_type="log", **tstyle)
         p.xaxis.axis_label = 'time (usecs)'
         p.yaxis.axis_label = 'duration (usecs)'
         p.legend.orientation = "bottom_right"
@@ -419,6 +425,7 @@ def show_core_runs(df, task_re, label, duration):
         title = "Task Run Time %% per Core (%s, %d msec window)" % (label, time_span_msec)
         palette = GnBu8[::-1]  # Reverse the color order so dark is highest value
         palette.pop(0)         # first one is too light
+        html_prefix = 'core_runtime'
     else:
         # count number of rows with same task and cpu
         dfm = DataFrame(gb.size())
@@ -433,6 +440,7 @@ def show_core_runs(df, task_re, label, duration):
         tooltip_count = ("context switches", "@count")
         title = "Task Context Switches per Core (%s, %d msec window)" % (label, time_span_msec)
         palette = YlOrRd9[::-1]
+        html_prefix = 'core_switches'
 
     dfm.percent = dfm.percent.round()
 
@@ -468,9 +476,10 @@ def show_core_runs(df, task_re, label, duration):
     if len(task_list) < len(palette) + 1:
         task_list += ['' for _ in range(len(palette) + 1 - len(task_list))]
     TOOLS = "resize,hover,save"
-    p = figure(title=title, tools=TOOLS, x_range=core_list, y_range=task_list)
+    p = figure(title=title, tools=TOOLS, x_range=core_list, y_range=task_list, **title_style)
+
     p.plot_width = 1000
-    p.plot_height = 80 + len(task_list) * 20
+    p.plot_height = 80 + len(task_list) * 16
     p.toolbar_location = "left"
     source = ColumnDataSource(dfm)
     # the name is to flag these rectangles to enable tooltip hover on them
@@ -529,7 +538,7 @@ def show_core_runs(df, task_re, label, duration):
     p.text(x='x', y='y', text='color_values', source=source,
            text_font_size='8pt')
 
-    output_html('core', task_re)
+    output_html(html_prefix, task_re)
     show(p)
 
 def convert_exit_df(df, label):
@@ -575,8 +584,11 @@ def show_kvm_exit_types(df, task_re, label):
             title="KVM Exit types per task (%s, %d msec window)" % (label, time_span_msec),
             legend='top_right',
             width=800, height=800)
-
-    # specify how to output the plot(s)
+    p._xaxis.axis_label = "Task Name"
+    p._xaxis.axis_label_text_font_size = "12pt"
+    p._yaxis.axis_label = "Exit Count (sum)"
+    p._yaxis.axis_label_text_font_size = "12pt"
+    # syecify how to output the plot(s)
     output_html('kvm-types', task_re)
 
     # display the figure
@@ -622,9 +634,7 @@ def show_core_locality(df, task_re, label):
     gb = df.groupby('task_name')
     task_list = gb.groups
 
-    p = figure(plot_width=1000, plot_height=800,
-               title_text_font_size='14pt',
-               title_text_font_style="bold")
+    p = figure(plot_width=1000, plot_height=800, **title_style)
 
     p.xaxis.axis_label = 'time (usecs)'
     p.yaxis.axis_label = 'core'
@@ -821,17 +831,17 @@ parser.add_option("-f", "--from",
                   help="(optional) start the analysis after first <from_time> msec"
                        " of capture (default=0)"
                   )
-parser.add_option("--convert",
-                  dest="convert",
-                  action="store",
-                  metavar="new cdict file",
-                  help="migrate to new encoding with runtime aggregation into switch"
-                  )
 parser.add_option("--map",
                   dest="map",
                   action="store",
                   metavar="mapping csv file",
                   help="remap task names from mapping csv file"
+                  )
+parser.add_option("--convert",
+                  dest="convert",
+                  action="store",
+                  metavar="new cdict file",
+                  help="(Deprecated) migrate to new encoding with runtime aggregation into switch"
                   )
 (options, args) = parser.parse_args()
 
