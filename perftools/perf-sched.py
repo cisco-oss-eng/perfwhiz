@@ -46,10 +46,8 @@ from bokeh.models.sources import ColumnDataSource
 from bokeh.models import HoverTool
 from bokeh.palettes import Spectral6
 from bokeh.io import gridplot
-from bokeh.io import hplot
-from bokeh._legacy_charts import HeatMap
 from bokeh.charts import Bar
-from bokeh.palettes import GnBu8, YlOrRd9
+from bokeh.palettes import YlOrRd9
 
 # Global variables
 
@@ -346,8 +344,9 @@ def get_color(percent, palette):
     except ValueError:
         # swapper tasks always have NaN since their duration is always 0
         percent = 100
-    max_index = len(palette) - 1
-    return palette[int(percent * max_index / 100)]
+    if percent >= 100:
+        return palette[-1]
+    return palette[percent * len(palette) // 100]
 
 def get_color_value_list(min_count, max_count, palette, range_unit):
     value_list = []
@@ -395,6 +394,8 @@ def show_core_runs(df, task_re, label, duration):
     if duration:
         # add duration values
         df = gb.aggregate(np.sum)
+        max_core = df.cpu.max()
+
         dfsum = df.drop('cpu', axis=1)
         gb = dfsum.groupby('task_name', as_index=False)
         dfsum = gb.aggregate(np.sum)
@@ -403,16 +404,23 @@ def show_core_runs(df, task_re, label, duration):
         # 1   ASA.10.vcpu0     65637
         # 2   ASA.11.vcpu0     81525
         # 3   ASA.12.vcpu0     56488
-        dfsum.rename(columns={'duration': 'total'}, inplace=True)
+        # For each task, the maximum runtime is the time_span_msec (100% of 1 core)
+        # The idle time for each task is therefore time_span_msec * 1000 - sum(duration)
+        dfsum['cpu'] = 'IDLE'
+        time_span_usec = time_span_msec * 1000
+        dfsum['duration'] = time_span_usec - dfsum['duration']
+
         # now we need to reinsert that data back to the df
-        dfm = pandas.merge(df, dfsum, on='task_name')
+        dfm = pandas.concat([df, dfsum], ignore_index=True)
+
         #         task_name  cpu  duration  total
         # 0     ASA.1.vcpu0    8      7954  78152
         # 1     ASA.1.vcpu0    9      5475  78152
         # 2     ASA.1.vcpu0   10      4151  78152
 
         # Add a % column
-        dfm['percent'] = (dfm['duration'] * 100) / dfm['total']
+        dfm['percent'] = ((dfm['duration'] * 100 * 10) // time_span_usec) / 10
+
         # This is for the legend
         min_count = 0
         max_count = 100
@@ -420,12 +428,17 @@ def show_core_runs(df, task_re, label, duration):
 
         # many core-pinned system tasks have a duration of 0 (swapper, watchdog...)
         dfm.fillna(100, inplace=True)
-        dfm.drop(['duration', 'total'], axis=1, inplace=True)
-        tooltip_count = ("% run time", "@percent")
+        dfm.drop(['duration'], axis=1, inplace=True)
+        tooltip_count = ("time", "@percent% of core @cpu")
         title = "Task Run Time %% per Core (%s, %d msec window)" % (label, time_span_msec)
-        palette = GnBu8[::-1]  # Reverse the color order so dark is highest value
-        palette.pop(0)         # first one is too light
+        # this is YlGnBu9[::-1]  (Reverse the color order so dark is highest value)
+        # with an extra intermediate color to make it 10
+        palette = ['#ffffd9', '#edf8b1', '#c7e9b4', '#a3dbb7', '#7fcdbb',
+                   '#41b6c4', '#1d91c0', '#225ea8', '#253494', '#081d58']
         html_prefix = 'core_runtime'
+        # add 1 extra column in the heatmap for core "IDLE" to represent the IDLE time
+        # this requires adding 1 row per real core that has a runtime set to
+        # capture window size - sum(duration on all cores)
     else:
         # count number of rows with same task and cpu
         dfm = DataFrame(gb.size())
@@ -441,18 +454,17 @@ def show_core_runs(df, task_re, label, duration):
         title = "Task Context Switches per Core (%s, %d msec window)" % (label, time_span_msec)
         palette = YlOrRd9[::-1]
         html_prefix = 'core_switches'
+        max_core = dfm.cpu.max()
 
-    dfm.percent = dfm.percent.round()
-
-    # now add 1 column per core# to gather the % for each task spent on that core
-    # first get the list of cores
-    max_core = dfm.cpu.max()
+    # get the list of cores
     # round up to next mutliple of 4 - 1
     # 0..3 -> 3
     # 4..7 -> 7 etc
     max_core |= 0x03
     max_core = max(max_core, 3)
     core_list = [str(x) for x in range(max_core + 1)]
+    if duration:
+        core_list.append('IDLE')
     # make room for the legend by adding 3 empty columns
     core_list += ['', '', '']
     dfm['cpu'] = dfm['cpu'].astype(str)
@@ -470,6 +482,9 @@ def show_core_runs(df, task_re, label, duration):
     # Add a color column
     dfm['color'] = dfm.apply(lambda row: get_color(row['percent'],
                                                    palette), axis=1)
+    # switch to str type to prevent the tooltip to
+    # display percent value with 3 digits
+    dfm.percent = dfm.percent.astype(str)
     # make enough vertical space for the legend
     # the legend needs 1 row per palette color + 1 to fit the max value
     # so we need at least len(palette) + 1 rows
@@ -484,7 +499,7 @@ def show_core_runs(df, task_re, label, duration):
     source = ColumnDataSource(dfm)
     # the name is to flag these rectangles to enable tooltip hover on them
     # (and not enable tooltips on the legend patches)
-    p.rect("cpu", "task_name", width=1, height=0.9, source=source, fill_alpha=0.6, color="color", name='patches')
+    p.rect("cpu", "task_name", width=1, height=0.9, source=source, fill_alpha=0.8, color="color", name='patches')
     p.grid.grid_line_color = None
     # trace separator lines to isolate blocks across core groups (numa sockets) and task-like names
     max_y = len(task_list)
@@ -518,6 +533,9 @@ def show_core_runs(df, task_re, label, duration):
     if max_y > palette_len + 1:
         legend_base_y = (max_y - palette_len - 1) // 2
 
+    if duration:
+        # IDLE cpu inserted so shift the legend by 1 position to the right
+        max_core += 1
     # pass 1 is to draw the color patches
     # prepare a data source with a x, y and a color column
     x_values = np.empty(palette_len)
