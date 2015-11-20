@@ -43,7 +43,7 @@ import numpy as np
 
 from bokeh.plotting import figure, output_file, show
 from bokeh.models.sources import ColumnDataSource
-from bokeh.models import HoverTool
+from bokeh.models import HoverTool, Range1d
 from bokeh.palettes import Spectral6
 from bokeh.io import gridplot
 from bokeh.charts import Bar
@@ -273,6 +273,10 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
     task_list = gb.groups.keys()
     task_list.sort()
     show_legend = True
+    duration_max = -1
+    duration_min = sys.maxint
+    event_list = legend_map.keys()
+    event_list.sort()
 
     for task in task_list:
         p = figure(plot_width=width, plot_height=height, y_axis_type="log", **tstyle)
@@ -290,13 +294,15 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
         p.ygrid.minor_grid_line_alpha = 0.1
         accumulated_time = {}
         total_time = 0
+
         dfg = gb.get_group(task)
         # remove any row with zero duration as it confuses the chart library
         dfg = dfg[dfg['duration'] > 0]
-        event_list = legend_map.keys()
-        event_list.sort()
+
         for event in event_list:
             dfe = dfg[dfg.event == event]
+            duration_min = min(duration_min, dfe['duration'].min())
+            duration_max = max(duration_max, dfe['duration'].max())
             count = len(dfe)
             color, legend_text, cx_sw = legend_map[event]
             if show_legend:
@@ -326,6 +332,9 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
             total_time += event_duration
         chart_list.append(p)
         show_legend = False
+
+    for p in chart_list:
+        p.y_range = Range1d(duration_min, duration_max)
 
     # specify how to output the plot(s)
     output_html('kvm', task_re)
