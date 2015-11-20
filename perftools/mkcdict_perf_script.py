@@ -620,7 +620,7 @@ def kvm__kvm_cpuid(event_name, context, common_cpu,
 
 def kvm__kvm_pio(event_name, context, common_cpu,
                  common_secs, common_nsecs, common_pid, common_comm,
-                 rw, port, size, count):
+                 rw, port, size, count, val=None):
     drop_event(event_name)
 
 
@@ -637,6 +637,11 @@ def kvm__kvm_hypercall(event_name, context, common_cpu,
                        a3):
     drop_event(event_name)
 
+def kvm__kvm_ple_window(event_name, context, common_cpu,
+                        common_secs, common_nsecs, common_pid, common_comm,
+                        grow, vcpu_id, new, old):
+    drop_event(event_name)
 
 def trace_unhandled(event_name, context, event_fields_dict):
+    print 'unhandled ' + event_name
     print ' '.join(['%s=%s' % (k, str(v)) for k, v in sorted(event_fields_dict.items())])

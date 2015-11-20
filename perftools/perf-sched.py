@@ -46,8 +46,13 @@ from bokeh.models.sources import ColumnDataSource
 from bokeh.models import HoverTool, Range1d
 from bokeh.palettes import Spectral6
 from bokeh.io import gridplot
+from bokeh.io import vplot
 from bokeh.charts import Bar
 from bokeh.palettes import YlOrRd9
+from bokeh.models.widgets import DataTable
+from bokeh.models.widgets import TableColumn
+from bokeh.models.widgets import NumberFormatter
+from bokeh.models.widgets import StringFormatter
 
 # Global variables
 
@@ -600,6 +605,11 @@ def show_kvm_exit_types(df, task_re, label):
     df['exit_reason'] = df['next_comm'].map(exit_codes)
     time_span_msec = get_time_span_msec(df)
     df.drop(['cpu', 'duration', 'event', 'next_pid', 'pid', 'next_comm', 'usecs'], inplace=True, axis=1)
+
+    # Get the list of exit reasons, sorted alphabetically
+    reasons = pandas.unique(df.exit_reason.ravel()).tolist()
+    reasons.sort()
+
     # group by task name then exit reasons
     gb = df.groupby(['task_name', 'exit_reason'])
     # number of exit types
@@ -610,16 +620,49 @@ def show_kvm_exit_types(df, task_re, label):
     p = Bar(df, label='task_name', values='count', stack='exit_reason',
             title="KVM Exit types per task (%s, %d msec window)" % (label, time_span_msec),
             legend='top_right',
-            width=800, height=800)
+            width=1000, height=800)
     p._xaxis.axis_label = "Task Name"
     p._xaxis.axis_label_text_font_size = "12pt"
     p._yaxis.axis_label = "Exit Count (sum)"
     p._yaxis.axis_label_text_font_size = "12pt"
-    # syecify how to output the plot(s)
+    # specify how to output the plot(s)
     output_html('kvm-types', task_re)
 
-    # display the figure
-    show(p)
+    # table with counts
+    gb = df.groupby(['exit_reason'])
+    keys = gb.groups.keys()
+    dfr_list = []
+    for reason in keys:
+        dfr = gb.get_group(reason)
+        # drop the exit reason column
+        dfr.drop(['exit_reason'], axis=1, inplace=True)
+        # rename the count column with the reason name
+        dfr.rename(columns={'count': reason}, inplace=True)
+        # set the task name as the index
+        dfr.set_index('task_name', inplace=True)
+        dfr_list.append(dfr)
+    # concatenate all task columns into 1 dataframe that has the exit reason as the index
+    # counts for missing exit reasons will be set to NaN
+    dft = pandas.concat(dfr_list, axis=1)
+    dft.fillna(0, inplace=True)
+    # Add a total column
+    dft['TOTAL'] = dft.sum(axis=1)
+
+    sfmt = StringFormatter(text_align='center', font_style='bold')
+    nfmt = NumberFormatter(format='0,0')
+
+    col_names = list(dft.columns.values)
+    col_names.sort()
+    # move 'TOTAL' at end of list
+    col_names.remove('TOTAL')
+    col_names.append('TOTAL')
+    # convert index to column name
+    dft.reset_index(level=0, inplace=True)
+    dft.rename(columns={'index': 'Task'}, inplace=True)
+    columns = [TableColumn(field=name, title=name, formatter=nfmt) for name in col_names]
+    columns.insert(0, TableColumn(field='Task', title='Task', formatter=sfmt))
+    table = DataTable(source=ColumnDataSource(dft), columns=columns, width=1000, row_headers=False)
+    show(vplot(p, table))
 
     '''
     # Show aggregated time inside VM and inside KVM
