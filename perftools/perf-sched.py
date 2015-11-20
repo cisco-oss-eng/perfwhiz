@@ -278,8 +278,8 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
     task_list = gb.groups.keys()
     task_list.sort()
     show_legend = True
-    duration_max = -1
-    duration_min = sys.maxint
+    duration_max = usecs_max = -1
+    duration_min = usecs_min = sys.maxint
     event_list = legend_map.keys()
     event_list.sort()
 
@@ -308,6 +308,8 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
             dfe = dfg[dfg.event == event]
             duration_min = min(duration_min, dfe['duration'].min())
             duration_max = max(duration_max, dfe['duration'].max())
+            usecs_min = min(usecs_min, dfe['usecs'].min())
+            usecs_max = max(usecs_max, dfe['usecs'].max())
             count = len(dfe)
             color, legend_text, cx_sw = legend_map[event]
             if show_legend:
@@ -338,8 +340,12 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
         chart_list.append(p)
         show_legend = False
 
+    shared_x_range = Range1d(usecs_min, usecs_max)
+    shared_y_range = Range1d(duration_min, duration_max)
+
     for p in chart_list:
-        p.y_range = Range1d(duration_min, duration_max)
+        p.x_range =  shared_x_range
+        p.y_range =  shared_y_range
 
     # specify how to output the plot(s)
     output_html('kvm', task_re)
