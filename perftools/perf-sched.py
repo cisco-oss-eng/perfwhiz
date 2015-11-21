@@ -24,7 +24,7 @@ import csv
 import os
 import sys
 import itertools
-
+import warnings
 import marshal
 try:
     # try to use the faster version if available
@@ -603,6 +603,7 @@ def show_exit_type_count(df_all_exits, df_last_exits):
     print res
 
 def show_kvm_exit_types(df, task_re, label):
+
     df = df[df['event'] == 'kvm_exit']
     df = df[df['task_name'].str.match(task_re)]
     # the next_comm column contains the exit code
@@ -626,11 +627,26 @@ def show_kvm_exit_types(df, task_re, label):
     p = Bar(df, label='task_name', values='count', stack='exit_reason',
             title="KVM Exit types per task (%s, %d msec window)" % (label, time_span_msec),
             legend='top_right',
+            tools="resize,hover,save",
             width=1000, height=800)
     p._xaxis.axis_label = "Task Name"
     p._xaxis.axis_label_text_font_size = "12pt"
     p._yaxis.axis_label = "Exit Count (sum)"
     p._yaxis.axis_label_text_font_size = "12pt"
+
+    # Cannot find a way to display the exit reason in the tooltip
+    # from bokeh.models.renderers import GlyphRenderer
+    # glr = p.select(dict(type=GlyphRenderer))
+    # bar_source = glr[0].data_source
+    # print bar_source.data
+    # bar_source = glr[1].data_source
+    # bar_source.data['exit_reason'] = ['HOHO']
+    hover = p.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([
+        ("task", "$x"),
+        # {"reason", "@exit_reason"},
+        ("count", "@height")
+    ])
     # specify how to output the plot(s)
     output_html('kvm-types', task_re)
 
@@ -641,7 +657,7 @@ def show_kvm_exit_types(df, task_re, label):
     for reason in keys:
         dfr = gb.get_group(reason)
         # drop the exit reason column
-        dfr.drop(['exit_reason'], axis=1, inplace=True)
+        dfr = dfr.drop(['exit_reason'], axis=1)
         # rename the count column with the reason name
         dfr.rename(columns={'count': reason}, inplace=True)
         # set the task name as the index
@@ -653,7 +669,6 @@ def show_kvm_exit_types(df, task_re, label):
     dft.fillna(0, inplace=True)
     # Add a total column
     dft['TOTAL'] = dft.sum(axis=1)
-
     sfmt = StringFormatter(text_align='center', font_style='bold')
     nfmt = NumberFormatter(format='0,0')
 
@@ -840,6 +855,8 @@ def remap(perf_dict, csv_map):
     print 'Remapped %d task names' % (count)
 
 # ---------------------------------- MAIN -----------------------------------------
+# Suppress future warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 parser = OptionParser(usage="usage: %prog [options] <cdict_file>")
 
