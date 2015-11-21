@@ -256,12 +256,15 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
     if show_kvm and show_ctx_switches:
         legend_map = dict(legend_map_kvm.items() + legend_map_ctx_sw.items())
         title = "Scheduler and KVM events"
+        prefix = 'swkvm'
     elif show_kvm:
         legend_map = legend_map_kvm
         title = "KVM events"
+        prefix = 'kvm'
     else:
         legend_map = legend_map_ctx_sw
         title = "Scheduler events"
+        prefix = 'sw'
     width = 1000
     height = 800
     show_legend = True
@@ -348,7 +351,7 @@ def show_sw_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
         p.y_range =  shared_y_range
 
     # specify how to output the plot(s)
-    output_html('kvm', task_re)
+    output_html(prefix, task_re)
 
     # display the figure
     if len(chart_list) == 1:
