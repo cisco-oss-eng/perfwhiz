@@ -200,7 +200,9 @@ def show_kvm_exit_types(df, task_re, label):
     dft.rename(columns={'index': 'Task'}, inplace=True)
     columns = [TableColumn(field=name, title=name, formatter=nfmt) for name in col_names]
     columns.insert(0, TableColumn(field='Task', title='Task', formatter=sfmt))
-    table = DataTable(source=ColumnDataSource(dft), columns=columns, width=1000, row_headers=False)
+    table = DataTable(source=ColumnDataSource(dft), columns=columns, width=1000,
+                      row_headers=False,
+                      height='auto')
     show(vplot(p, table))
 
     '''
