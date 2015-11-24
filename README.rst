@@ -29,7 +29,7 @@ Perftools workflow
 
 
 
-Analyzing traces (perf-sched.py)
+Analyzing traces (perfmap.py)
 --------------------------------
 
 Pre-requisites
