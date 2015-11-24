@@ -73,8 +73,8 @@ Installation from source code be as easy as:
 
 .. code-block:: bash
     
-    $ git clone https://github.com/cisco-oss-eng/perftools.git
-    $ cd perftools
+    $ git clone https://github.com/cisco-oss-eng/perfwhiz.git
+    $ cd perfwhiz
     $ pip install -e.
 
 Once installation is finished, you should be able to verify the installation
@@ -97,8 +97,8 @@ Installation from source code be as easy as:
 
 .. code-block:: bash
     
-    $ git clone https://github.com/cisco-oss-eng/perftools.git
-    $ cd perftools
+    $ git clone https://github.com/cisco-oss-eng/perfwhiz.git
+    $ cd perfwhiz
     $ pip install -e.[analyzer]
 
 Once installation is finished, you should be able to verify the installation
