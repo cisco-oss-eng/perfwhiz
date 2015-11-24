@@ -49,3 +49,8 @@ Links
 * Supports/Bugs: WIP 
 * Mailing List: WIP 
 
+
+
+.. image:: https://badges.gitter.im/Join%20Chat.svg
+   :alt: Join the chat at https://gitter.im/cisco-oss-eng/perfwhiz
+   :target: https://gitter.im/cisco-oss-eng/perfwhiz?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
