@@ -1,0 +1,4 @@
+-r requirements.txt
+flake8>=2.3.0
+sphinx>=1.2.3
+tox>=1.9.0

@@ -163,8 +163,8 @@ def show_sw_kvm_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
     shared_y_range = Range1d(duration_min, duration_max)
 
     for p in chart_list:
-        p.x_range =  shared_x_range
-        p.y_range =  shared_y_range
+        p.x_range = shared_x_range
+        p.y_range = shared_y_range
 
     # specify how to output the plot(s)
     output_html(prefix, task_re)

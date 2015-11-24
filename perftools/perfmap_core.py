@@ -339,4 +339,3 @@ def show_core_locality(df, task_re, label):
 
     # display the figure
     show(p)
-

@@ -1,11 +1,35 @@
-*.html
-*.cdict
-.tox
+*.py[cod]
+
+# Packages
 *.egg
+*.eggs
 *.egg-info
-*.pyc
+dist
+build
+parts
+bin
+var
+sdist
+develop-eggs
+.installed.cfg
+
+# Sphinx
+doc/build
+
+# pbr generates these
 AUTHORS
 ChangeLog
+
+# Unit test / coverage reports
+.coverage
+.tox
+nosetests.xml
+.testrepository
+.venv
+
+# perfwhiz
+*.html
+*.cdict
 .cache
 *.ipynb
 .ipynb_checkpoints
