@@ -3,7 +3,7 @@ Overview
 ========
 
 This repository contains a set of python scripts for helping tune any Linux
-system for performance and scale by leveraging the Linux perf tool and 
+system for performance and scale by leveraging the Linux perf tool and
 generate from the perf traces:
 
 - context switch heat maps (temporal distribution of context switch events)
@@ -44,12 +44,10 @@ limitations under the License.
 Links
 -----
 
-* Documentation: WIP 
-* Source: WIP 
-* Supports/Bugs: WIP 
-* Mailing List: WIP 
-
-
+* Documentation: http://perfwhiz.readthedocs.org/en/latest/
+* Source: https://github.com/cisco-oss-eng/perfwhiz
+* Supports/Bugs: https://github.com/cisco-oss-eng/perfwhiz
+* Gitter Room: https://gitter.im/cisco-oss-eng/perfwhiz
 
 .. image:: https://badges.gitter.im/Join%20Chat.svg
    :alt: Join the chat at https://gitter.im/cisco-oss-eng/perfwhiz
