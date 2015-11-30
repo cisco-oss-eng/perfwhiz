@@ -124,11 +124,7 @@ def capture(opts, run_name):
     # If this is set we skip the capture
     perf_data_filename = opts.perf_data
     if perf_data_filename:
-        if not os.path.isfile(perf_data_filename):
-            print 'Cannot find perf data file: ' + opts.perf_data
-            return
         print 'Skipping capture, using ' + perf_data_filename
-
     else:
         # need to capture traces
         print 'Capturing perf data for %d seconds...' % (opts.seconds)
@@ -153,14 +149,7 @@ def capture(opts, run_name):
             # try to run this script through the perf tool itself as it is faster
             rc = subprocess.call([perf_binary, 'script', '-s', 'mkcdict_perf_script.py', '-i', perf_data_filename])
             if rc == 255:
-                print '   perf is not built with the python scripting extension, parsing text file (slower)...'
-                text_filename = run_name + '.txt'
-                print '   Generating text traces to file %s...' % (text_filename)
-                with open(text_filename, 'w') as ff:
-                    rc = subprocess.call([perf_binary, 'script', '-i', perf_data_filename],
-                                         stdout=ff, stderr=subprocess.PIPE)
-                # parse the text file into a cdict file
-                print '   Feature not implemented'
+                print '   ERROR: perf is not built with the python scripting extension - aborting...'
             else:
                 # success result is in perf.cdict, so need to rename it
                 os.rename('perf.cdict', cdict_filename)
@@ -205,10 +194,24 @@ if __name__ == '__main__':
                       help='use given perf data file (do not capture)',
                       metavar='<perf data file>')
 
+    parser.add_option("--map",
+                      dest="map",
+                      action="store",
+                      metavar="mapping csv file",
+                      help="remap task names from mapping csv file"
+                      )
+
     parser.add_option('--use-perf', dest='perf',
                       action='store',
                       help='use given perf binary',
                       metavar='<perf binary>')
+
+    parser.add_option("--remap",
+                      dest="remap",
+                      action="store",
+                      metavar="cdict_file",
+                      help="remap the passed cdict file using the given map file (see --map)"
+                      )
 
     parser.add_option('-r', '--rc', dest='rc',
                       action='store',
@@ -236,7 +239,21 @@ if __name__ == '__main__':
     if not opts.dest_folder.endswith('/'):
         opts.dest_folder += '/'
 
+    # chek the map file is valid if provided
+    if opts.map:
+        if not os.path.exists(opts.map):
+            print 'ERROR: Invalid mapping file: ' + opts.map
+            sys.exit(1)
+
     # pick at least one command
+    if opts.remap:
+        if not opts.map:
+            print 'ERROR: remap command requires a csv mapping file (--map)'
+            sys.exit(1)
+        perf_dict = perf_formatter.open_cdict(opts.remap, opts.map)
+        perf_formatter.write_cdict(opts.remap, perf_dict)
+        sys.exit(0)
+
     if not (opts.all | opts.switches | opts.stats):
         print 'Pick at least one of --stats, --switches, --all'
         sys.exit(3)
@@ -268,96 +285,3 @@ if __name__ == '__main__':
         print 'Overriding perf binary with: ' + perf_binary
 
     capture(opts, run_name)
-
-
-# Unused code - WIP
-# python decode of perf script text output - very slow
-# only when perf python extension is not available
-
-from mkcdict_perf_script import trace_begin
-from mkcdict_perf_script import trace_end
-from mkcdict_perf_script import add_event
-from mkcdict_perf_script import kvm_entry
-from mkcdict_perf_script import kvm_exit
-
-
-def _kvm_entry(cpu, secs, nsecs, pid, comm, args):
-    # kvm:kvm_entry: vcpu 0
-    kvm_entry(cpu, secs, nsecs, pid, comm)
-
-kvm_exit_re = re.compile('reason (\w*) ')
-def _kvm_exit(cpu, secs, nsecs, pid, comm, args):
-    #
-    # kvm:kvm_exit: reason APIC_ACCESS rip 0xffffffff810271ee info 10b0 0
-    m = kvm_exit_re.match(args)
-    if m:
-        kvm_exit(cpu, secs, nsecs, pid, comm, m.group(1))
-    else:
-        print 'Dropped mismatch for kvm_exit: ' + args
-
-
-# sched:sched_switch: prev_comm=qemu-system-x86 prev_pid=28823 prev_prio=120 prev_state=S ==>
-# next_comm=swapper/7 next_pid=0 next_prio=120
-switch_re = re.compile('comm=([\w\-/]+) prev_pid=(\d+) prev_prio=\d+ prev_state=\w* ==> '
-                       'next_comm=([\w\-/]+) next_pid=(\d+) ')
-
-def sched_switch(cpu, secs, nsecs, pid, comm, args):
-
-    print 'sched switch:' + args
-    m = switch_re.match(args)
-    if m:
-        add_event('sched:sched_switch', cpu, secs, nsecs, m.group(2), m.group(1), 0, m.group(4), m.group(3))
-    else:
-        print 'Dropped mismatch for sched_stat_runtime: ' + args
-
-# sched:sched_stat_runtime: comm=qemu-system-x86 pid=28823 runtime=36140 [ns] vruntime=3273999068253 [ns]
-stat_runtime_re = re.compile('comm=([\w\-/]+) pid=(\d+) runtime=(\d)+ ')
-
-def sched_stat_runtime(cpu, secs, nsecs, pid, comm, args):
-    m = stat_runtime_re.match(args)
-    if m:
-        add_event('sched:sched_stat_runtime', cpu, secs, nsecs, m.group(2), m.group(1), m.group(3))
-    else:
-        print 'Dropped mismatch for sched_stat_runtime: ' + args
-
-# sched:sched_stat_sleep: comm=qemu-system-x86 pid=28823 delay=386438 [ns]
-stat_sleep_re = re.compile('comm=([\w\-/]+) pid=(\d+) delay=(\d)+ ')
-
-def sched_stat_sleep(cpu, secs, nsecs, pid, comm, args):
-    m = stat_sleep_re.match(args)
-    if m:
-        add_event('sched:sched_stat_sleep', cpu, secs, nsecs, m.group(2), m.group(1), m.group(3))
-    else:
-        print 'Dropped mismatch for sched_stat_sleep: ' + args
-
-fn_dispatch = {
-    'kvm_entry': _kvm_entry,
-    'kvm_exit': _kvm_exit,
-    'sched_switch': sched_switch,
-    'sched_stat_runtime': sched_stat_runtime,
-    'sched_stat_sleep': sched_stat_sleep
-}
-
-
-def decode_perf_text(filename):
-    #  qemu-system-x86 27637 [006] 622048.897809: kvm:kvm_entry: vcpu 0
-    trace_re = re.compile(' *([\w\-]*) *(\d*) \[(\d*)\] (\d*)\.(\d*): \w*:(\w*): ')
-    with open(filename, 'r') as input:
-        trace_begin()
-        for line in input:
-            if line[0] == '#':
-                continue
-            m = trace_re.match(line)
-            if m:
-                task = m.group(1)
-                pid = int(m.group(2))
-                cpu = int(m.group(3))
-                secs = int(m.group(4))
-                usecs = int(m.group(5))
-                event = m.group(6)
-                event_args = line[m.end():]
-                try:
-                    fn_dispatch[event](cpu, secs, usecs * 1000, pid, task, event_args)
-                except KeyError:
-                    pass
-        trace_end()

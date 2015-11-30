@@ -71,6 +71,7 @@ def count_event(event_name):
 
 def trace_begin():
     global plugin_convert_name
+
     # try to import
     try:
         from mkcdict_plugin import plugin_init

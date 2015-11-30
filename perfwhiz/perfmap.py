@@ -19,30 +19,14 @@
 
 
 from optparse import OptionParser
-import csv
 import os
 import sys
 import warnings
-import marshal
-try:
-    # try to use the faster version if available
-    from msgpack import packb
-    from msgpack import unpackb
-except ImportError:
-    # else fall back to the pure python version (slower)
-    from umsgpack import packb
-    from umsgpack import unpackb
-
-import zlib
 import pandas
 from pandas import DataFrame
 
-
-from bokeh.plotting import figure, output_file, show
-from bokeh.models.sources import ColumnDataSource
-from bokeh.models import HoverTool, Range1d
-from bokeh.io import gridplot
-from bokeh.io import vplot
+from perf_formatter import open_cdict
+from perf_formatter import write_cdict
 
 from perfmap_common import set_html_file
 
@@ -135,50 +119,15 @@ def convert(df, new_cdict):
     print 'End of conversion, marshaling and compressing...'
     df.fillna(value=0, inplace=True, downcast='infer')
     # save new cdict
-    with open(new_cdict, 'w') as ff:
-        res = {'event': df['event'].tolist(),
-               'cpu': df['cpu'].tolist(),
-               'usecs': df['usecs'].tolist(),
-               'pid': df['pid'].tolist(),
-               'task_name': df['task_name'].tolist(),
-               'duration': df['duration'].tolist(),
-               'next_pid': df['next_pid'].tolist(),
-               'next_comm': df['next_comm'].tolist()}
-        compressed = zlib.compress(packb(res))
-        ff.write(compressed)
-        print 'Compressed dictionary written to %s %d entries size=%d bytes' % \
-              (new_cdict, len(df), len(compressed))
-
-def remap(perf_dict, csv_map):
-    # a mapping dict of task names indexed by the tid
-    map_dict = {}
-    print 'Remapping task names...'
-    with open(csv_map, 'r') as ff:
-        # 19236,instance-000019f4,emulator,8f81e3a1-3ebd-4015-bbee-e291f0672d02,FULL,5,CSR
-        reader = csv.DictReader(ff, fieldnames=['tid', 'libvirt_id', 'thread_type', 'uuid', 'chain_type',
-                                                'chain_id', 'nvf_name'])
-        for row in reader:
-            task_name = '%s.%02d.%s' % (row['nvf_name'], int(row['chain_id']), row['thread_type'])
-            map_dict[int(row['tid'])] = task_name
-    pids = perf_dict['pid']
-    names = perf_dict['task_name']
-    next_pids = perf_dict['next_pid']
-    next_comms = perf_dict['next_comm']
-    count = 0
-    for index in xrange(len(pids)):
-        try:
-            new_task_name = map_dict[pids[index]]
-            names[index] = new_task_name
-            count += 1
-        except KeyError:
-            pass
-        try:
-            new_task_name = map_dict[next_pids[index]]
-            next_comms[index] = new_task_name
-            count += 1
-        except KeyError:
-            pass
-    print 'Remapped %d task names' % (count)
+    res = {'event': df['event'].tolist(),
+           'cpu': df['cpu'].tolist(),
+           'usecs': df['usecs'].tolist(),
+           'pid': df['pid'].tolist(),
+           'task_name': df['task_name'].tolist(),
+           'duration': df['duration'].tolist(),
+           'next_pid': df['next_pid'].tolist(),
+           'next_comm': df['next_comm'].tolist()}
+    write_cdict(new_cdict, res)
 
 # ---------------------------------- MAIN -----------------------------------------
 # Suppress future warnings
@@ -272,25 +221,7 @@ if not args:
     sys.exit(1)
 
 cdict_file = args[0]
-if not cdict_file.endswith('.cdict'):
-    # automatically add the cdict extension if there is one
-    if os.path.isfile(cdict_file + '.cdict'):
-        cdict_file += '.cdict'
-    else:
-        print('input file name must have the .cdict extension')
-
-with open(cdict_file, 'r') as ff:
-    cdict = ff.read()
-
-decomp = zlib.decompress(cdict)
-try:
-    perf_dict = unpackb(decomp)
-except Exception:
-    # old serialization format
-    perf_dict = marshal.loads(decomp)
-
-if options.map:
-    remap(perf_dict, options.map)
+perf_dict = open_cdict(cdict_file, options.map)
 
 df = DataFrame(perf_dict)
 set_html_file(cdict_file)
@@ -300,7 +231,6 @@ if from_time:
     df = df[df['usecs'] >= from_time]
 if cap_time:
     df = df[df['usecs'] <= cap_time]
-
 
 if not options.label:
     options.label = os.path.splitext(os.path.basename(cdict_file))[0]

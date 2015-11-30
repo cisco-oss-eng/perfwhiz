@@ -13,7 +13,20 @@
 #    under the License.
 #
 
+# Common functions across capture and map functions
+
+import csv
+import os
 import re
+import zlib
+try:
+    # try to use the faster version if available
+    from msgpack import packb
+    from msgpack import unpackb
+except ImportError:
+    # else fall back to the pure python version (slower)
+    from umsgpack import packb
+    from umsgpack import unpackb
 
 # a dict of task names indexed by tid
 name_by_tid = {}
@@ -85,3 +98,81 @@ def get_task_name(tid, name):
         name += '.' + thread_type
     name_by_tid[tid] = name
     return name
+
+# cdict management functions
+
+def remap(perf_dict, csv_map):
+    '''Remap all the task names in the cdict file with those specified in the mapping file
+    :param perf_dict: an uncompressed dictionary
+    :param csv_map: csv mapping file name
+    '''
+    # a mapping dict of task names indexed by the tid
+    map_dict = {}
+    print 'Remapping task names...'
+    with open(csv_map, 'r') as ff:
+        # 19236,instance-000019f4,emulator,8f81e3a1-3ebd-4015-bbee-e291f0672d02,FULL,5,CSR
+        reader = csv.DictReader(ff, fieldnames=['tid', 'libvirt_id', 'thread_type', 'uuid', 'chain_type',
+                                                'chain_id', 'nvf_name'])
+        for row in reader:
+            task_name = '%s.%02d.%s' % (row['nvf_name'], int(row['chain_id']), row['thread_type'])
+            map_dict[int(row['tid'])] = task_name
+    pids = perf_dict['pid']
+    names = perf_dict['task_name']
+    next_pids = perf_dict['next_pid']
+    next_comms = perf_dict['next_comm']
+    count = 0
+    for index in xrange(len(pids)):
+        try:
+            new_task_name = map_dict[pids[index]]
+            names[index] = new_task_name
+            count += 1
+        except KeyError:
+            pass
+        try:
+            new_task_name = map_dict[next_pids[index]]
+            next_comms[index] = new_task_name
+            count += 1
+        except KeyError:
+            pass
+    print 'Remapped %d task names' % (count)
+
+def open_cdict(cdict_file, map_file=None):
+    '''Open and decode a cdict file
+    :param cdict_file: name of the cdict file
+    :param map_file: name of a mapping file (optional)
+    :return: the uncompressed dictionary representing the cdict file
+    '''
+    if not cdict_file.endswith('.cdict'):
+        # automatically add the cdict extension if there is one
+        if os.path.isfile(cdict_file + '.cdict'):
+            cdict_file += '.cdict'
+        else:
+            raise ValueError('cdict file name must have the .cdict extension: ' + cdict_file)
+
+    with open(cdict_file, 'r') as ff:
+        cdict = ff.read()
+
+    decomp = zlib.decompress(cdict)
+    try:
+        perf_dict = unpackb(decomp)
+    except Exception:
+        # old serialization format
+        perf_dict = marshal.loads(decomp)
+    if map_file:
+        remap(perf_dict, map_file)
+    return perf_dict
+
+def write_cdict(cdict_file, perf_dict):
+    '''Write a dictionary to a cdict file
+    :param cdict_file: cdict file name (will auto add a .cdict extension if missing)
+    :param perf_dict:  perf dict to compress and write
+    :return:
+    '''
+    if not cdict_file.endswith('.cdict'):
+        # automatically add the cdict extension if there is one
+        cdict_file += '.cdict'
+    with open(cdict_file, 'w') as ff:
+        compressed = zlib.compress(packb(perf_dict))
+        ff.write(compressed)
+        print 'Compressed dictionary written to %s %d entries size=%d bytes' % \
+              (cdict_file, len(perf_dict), len(compressed))
