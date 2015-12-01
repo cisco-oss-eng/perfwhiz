@@ -22,7 +22,6 @@ from collections import OrderedDict
 import pandas
 from pandas import Series
 
-from bokeh.plotting import show
 from bokeh.models.sources import ColumnDataSource
 from bokeh.models import HoverTool
 from bokeh.io import vplot
@@ -166,7 +165,6 @@ def show_kvm_exit_types(df, task_re, label):
         ("count", "@height")
     ])
     # specify how to output the plot(s)
-    output_html('kvm-types', task_re)
 
     # table with counts
     gb = df.groupby(['exit_reason'])
@@ -203,7 +201,7 @@ def show_kvm_exit_types(df, task_re, label):
     table = DataTable(source=ColumnDataSource(dft), columns=columns, width=1000,
                       row_headers=False,
                       height='auto')
-    show(vplot(p, table))
+    output_html(vplot(p, table), 'kvm-types', task_re)
 
     '''
     # Show aggregated time inside VM and inside KVM

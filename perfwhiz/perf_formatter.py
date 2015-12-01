@@ -16,6 +16,7 @@
 # Common functions across capture and map functions
 
 import csv
+import marshal
 import os
 import re
 import zlib

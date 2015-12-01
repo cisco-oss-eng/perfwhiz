@@ -18,6 +18,7 @@
 # ---------------------------------------------------------
 
 
+import bokeh.plotting
 from optparse import OptionParser
 import os
 import sys
@@ -37,6 +38,7 @@ from perfmap_core import show_core_runs
 from perfmap_core import show_core_locality
 
 # Global variables
+output_chart = None
 
 # start analysis after first from_time usec
 from_time = 0
@@ -186,6 +188,17 @@ parser.add_option("--label",
                   metavar="label",
                   help="label for the title (defaulst to the cdict file name)"
                   )
+parser.add_option("--map",
+                  dest="map",
+                  action="store",
+                  metavar="mapping csv file",
+                  help="remap task names from mapping csv file"
+                  )
+parser.add_option("--headless",
+                  dest="headless",
+                  action="store_true",
+                  help="do not show chart in the browser (default=False)"
+                  )
 parser.add_option("-c", "--cap",
                   dest="cap_time",
                   help="(optional) cap the analysis to first <cap_time> msec"
@@ -196,12 +209,7 @@ parser.add_option("-f", "--from",
                   help="(optional) start the analysis after first <from_time> msec"
                        " of capture (default=0)"
                   )
-parser.add_option("--map",
-                  dest="map",
-                  action="store",
-                  metavar="mapping csv file",
-                  help="remap task names from mapping csv file"
-                  )
+
 parser.add_option("--convert",
                   dest="convert",
                   action="store",
@@ -224,7 +232,7 @@ cdict_file = args[0]
 perf_dict = open_cdict(cdict_file, options.map)
 
 df = DataFrame(perf_dict)
-set_html_file(cdict_file)
+set_html_file(cdict_file, options.headless)
 
 # filter on usecs
 if from_time:

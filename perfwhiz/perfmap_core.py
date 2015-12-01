@@ -24,7 +24,7 @@ import pandas
 from pandas import DataFrame
 import numpy as np
 
-from bokeh.plotting import figure, show
+from bokeh.plotting import figure
 from bokeh.models.sources import ColumnDataSource
 from bokeh.models import HoverTool
 from bokeh.palettes import Spectral6
@@ -89,6 +89,8 @@ def get_color_value_list(min_count, max_count, palette, range_unit):
     value_list = []
     color_count = len(palette)
     increment = float(max_count - min_count) / color_count
+    if increment == 0:
+        increment = 1
     value_list = np.arange(min_count, max_count + 1, increment).astype(np.int).astype(str).tolist()
     if range_unit:
         value_list = [x + range_unit for x in value_list]
@@ -293,9 +295,7 @@ def show_core_runs(df, task_re, label, duration):
     p.text(x='x', y='y', text='color_values', source=source,
            text_font_size='8pt')
 
-    output_html(html_prefix, task_re)
-    show(p)
-
+    output_html(p, html_prefix, task_re)
 
 def show_core_locality(df, task_re, label):
 
@@ -335,7 +335,4 @@ def show_core_locality(df, task_re, label):
                   source=ColumnDataSource(dfe))
 
     # specify how to output the plot(s)
-    output_html('coreloc', task_re)
-
-    # display the figure
-    show(p)
+    output_html(p, 'coreloc', task_re)

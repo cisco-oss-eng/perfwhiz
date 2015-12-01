@@ -19,7 +19,7 @@
 
 import sys
 
-from bokeh.plotting import figure, show
+from bokeh.plotting import figure
 from bokeh.models.sources import ColumnDataSource
 from bokeh.models import Range1d
 from bokeh.io import gridplot
@@ -167,12 +167,11 @@ def show_sw_kvm_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
         p.y_range = shared_y_range
 
     # specify how to output the plot(s)
-    output_html(prefix, task_re)
 
     # display the figure
     if len(chart_list) == 1:
-        show(chart_list[0])
+        output_html(chart_list[0], prefix, task_re)
     else:
         # split the list into an array of rows with 2 charts per row
         gp = gridplot(split_list(chart_list, 2))
-        show(gp)
+        output_html(gp, prefix, task_re)
