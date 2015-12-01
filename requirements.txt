@@ -1,1 +1,2 @@
 pbr>=1.8
+msgpack-python>=0.4.6
