@@ -2,7 +2,7 @@ language: python
 python:
 - '2.7'
 install:
-- pip install -e.[analyzer]
+- pip install -e.
 script:
 - echo SUCCESS
 deploy:
@@ -10,6 +10,7 @@ deploy:
   user: perfwhiz-admin
   password:
     secure: B6+kSJ+fmkLm6RF6FTeiTGLlHw2mdxE36P6FAK4qK7gyzC+fXNqP9ko6ZxbUjWNYDpttBf8FeBcfjoYM3Y99yL2muYBAmUR4S5WaiTb/zRePxun8pzt/EdyWGVSvmIpcf0GgDH/tj/LfcfVNetg9L+tIYCrODk5QPN1O12TCbQnDJqTaXMtVTqiHFI3Hd3NF1srRPWUq8utLib+6eMiS8q+32p4vdzWf9z2ki/KjUeRoo4iDnVWJXMSdomPI9SQtwmZP+vSghsut94QNLfQ3jI5oRRG7BEyeXbU57wxDKjx8GTTZMD5FY9IziyZ2UQzpqf8GfvlSlhc1WokO1rODhlUBFdwK6jQOS2xojqUuAaoeYU4ZTVs5IIXsSClceF1Yeqv9Afd4YGdiMp7NZxjsFQ3J2Ii3z/tegfZlHl0r5V4QunVNGk03pvwUx8gA9RfDUwD5TQYpq8gs49s6CimtSJFoYp7rD1qiBPBM53OfnkbTFesRR0epVSGXI5z3afUIKUoox55FGpMU18X01cxzvW/yL80kLLtlFsfAQQDy6vETIv/+DfrcyXQ6am2HwhI44KwP/Ygdg2pDkD/B5SthEnNs7/5uGFA0uFp8pBz4OsnpxHpWA7WlxgE+z5BeL0qUuP5t23dyTn+rR0H2b4dU/cnh6mVdVGb9v2/5iLYVTCc=
+  distributions: "sdist bdist_wheel"
   on:
     tags: true
     repo: cisco-oss-eng/perfwhiz
