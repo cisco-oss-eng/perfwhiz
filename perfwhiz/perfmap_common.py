@@ -26,7 +26,7 @@ title_style = {'title_text_font_size': '12pt',
 grid_title_style = {'title_text_font_size': '10pt',
                     'title_text_font_style': 'bold'}
 
-def set_html_file(cdict_file, headless):
+def set_html_file(cdict_file, headless, label):
     global html_file
     html_file = cdict_file.replace('.cdict', '')
     global output_chart
@@ -34,6 +34,10 @@ def set_html_file(cdict_file, headless):
         output_chart = bokeh.plotting.save
     else:
         output_chart = bokeh.plotting.show
+    global label_prefix
+    if label:
+        label = label.replace(' ', '-')
+    label_prefix = label
 
 # calculate the time between the 1st entry and the last entry in msec
 def get_time_span_msec(df):
@@ -68,7 +72,10 @@ def get_disc_size(count):
     return 6
 
 def output_html(chart, chart_type, task_re):
-    filename = html_file + '_' + chart_type + '_' + task_re + '.html'
+    if label_prefix:
+        filename = label_prefix + '-' + chart_type + '.html'
+    else:
+        filename = html_file + '_' + chart_type + '_' + task_re + '.html'
     bokeh.plotting.output_file(filename)
     print('Saved to ' + filename)
     output_chart(chart)

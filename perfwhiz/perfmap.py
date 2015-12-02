@@ -186,7 +186,7 @@ parser.add_option("--kvm-exit-types",
 parser.add_option("--label",
                   dest="label",
                   metavar="label",
-                  help="label for the title (defaulst to the cdict file name)"
+                  help="label for the title (defaults to the cdict file name)"
                   )
 parser.add_option("--map",
                   dest="map",
@@ -232,7 +232,7 @@ cdict_file = args[0]
 perf_dict = open_cdict(cdict_file, options.map)
 
 df = DataFrame(perf_dict)
-set_html_file(cdict_file, options.headless)
+set_html_file(cdict_file, options.headless, options.label)
 
 # filter on usecs
 if from_time:
