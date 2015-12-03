@@ -132,148 +132,153 @@ def convert(df, new_cdict):
     write_cdict(new_cdict, res)
 
 # ---------------------------------- MAIN -----------------------------------------
-# Suppress future warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
 
-parser = OptionParser(usage="usage: %prog [options] <cdict_file>")
+def main():
 
+    # Suppress future warnings
+    warnings.simplefilter(action='ignore', category=FutureWarning)
 
-parser.add_option("--successors-of",
-                  dest="successor_of_task",
-                  help="show list of successors of given tid or task name"
-                  )
-parser.add_option("--show-tids",
-                  dest="show_tids",
-                  action="store_true",
-                  default=False,
-                  help="show list of all tids with event count)"
-                  )
-parser.add_option("-t", "--task",
-                  dest="task",
-                  metavar="task name (regex)",
-                  help="selected task(s) (regex on task name)"
-                  )
-parser.add_option("--core-locality",
-                  dest="core_loc",
-                  action="store_true",
-                  help="show core locality heat map (requires --task)"
-                  )
-parser.add_option("--core-runtime",
-                  dest="core_runtime",
-                  action="store_true",
-                  help="show % runtime on each core (requires --task)"
-                  )
-parser.add_option("--core-switch-count",
-                  dest="core_switches",
-                  action="store_true",
-                  help="show context switch count on each core (requires --task)"
-                  )
-parser.add_option("--switches",
-                  dest="switches",
-                  action="store_true",
-                  help="show context switches heat map (requires --task)"
-                  )
-parser.add_option("--kvm-exits",
-                  dest="kvm_exits",
-                  action="store_true",
-                  help="show kvm exits heat map (requires --task)"
-                  )
-parser.add_option("--kvm-exit-types",
-                  dest="kvm_exit_types",
-                  action="store_true",
-                  help="show kvm exit types bar charts (requires --task)"
-                  )
-parser.add_option("--label",
-                  dest="label",
-                  metavar="label",
-                  help="label for the title (defaults to the cdict file name)"
-                  )
-parser.add_option("--map",
-                  dest="map",
-                  action="store",
-                  metavar="mapping csv file",
-                  help="remap task names from mapping csv file"
-                  )
-parser.add_option("--headless",
-                  dest="headless",
-                  action="store_true",
-                  help="do not show chart in the browser (default=False)"
-                  )
-parser.add_option("-c", "--cap",
-                  dest="cap_time",
-                  help="(optional) cap the analysis to first <cap_time> msec"
-                       " of capture (default=all)"
-                  )
-parser.add_option("-f", "--from",
-                  dest="from_time",
-                  help="(optional) start the analysis after first <from_time> msec"
-                       " of capture (default=0)"
-                  )
+    parser = OptionParser(usage="usage: %prog [options] <cdict_file>")
 
-parser.add_option("--convert",
-                  dest="convert",
-                  action="store",
-                  metavar="new cdict file",
-                  help="(Deprecated) migrate to new encoding with runtime aggregation into switch"
-                  )
-(options, args) = parser.parse_args()
+    parser.add_option("--successors-of",
+                      dest="successor_of_task",
+                      help="show list of successors of given tid or task name"
+                      )
+    parser.add_option("--show-tids",
+                      dest="show_tids",
+                      action="store_true",
+                      default=False,
+                      help="show list of all tids with event count)"
+                      )
+    parser.add_option("-t", "--task",
+                      dest="task",
+                      metavar="task name (regex)",
+                      help="selected task(s) (regex on task name)"
+                      )
+    parser.add_option("--core-locality",
+                      dest="core_loc",
+                      action="store_true",
+                      help="show core locality heat map (requires --task)"
+                      )
+    parser.add_option("--core-runtime",
+                      dest="core_runtime",
+                      action="store_true",
+                      help="show % runtime on each core (requires --task)"
+                      )
+    parser.add_option("--core-switch-count",
+                      dest="core_switches",
+                      action="store_true",
+                      help="show context switch count on each core (requires --task)"
+                      )
+    parser.add_option("--switches",
+                      dest="switches",
+                      action="store_true",
+                      help="show context switches heat map (requires --task)"
+                      )
+    parser.add_option("--kvm-exits",
+                      dest="kvm_exits",
+                      action="store_true",
+                      help="show kvm exits heat map (requires --task)"
+                      )
+    parser.add_option("--kvm-exit-types",
+                      dest="kvm_exit_types",
+                      action="store_true",
+                      help="show kvm exit types bar charts (requires --task)"
+                      )
+    parser.add_option("--label",
+                      dest="label",
+                      metavar="label",
+                      help="label for the title (defaults to the cdict file name)"
+                      )
+    parser.add_option("--map",
+                      dest="map",
+                      action="store",
+                      metavar="mapping csv file",
+                      help="remap task names from mapping csv file"
+                      )
+    parser.add_option("--headless",
+                      dest="headless",
+                      action="store_true",
+                      help="do not show chart in the browser (default=False)"
+                      )
+    parser.add_option("-c", "--cap",
+                      dest="cap_time",
+                      help="(optional) cap the analysis to first <cap_time> msec"
+                           " of capture (default=all)"
+                      )
+    parser.add_option("-f", "--from",
+                      dest="from_time",
+                      help="(optional) start the analysis after first <from_time> msec"
+                           " of capture (default=0)"
+                      )
 
-if options.from_time:
-    from_time = int(options.from_time) * 1000
-if options.cap_time:
-    # convert to usec
-    cap_time = int(options.cap_time) * 1000 + from_time
+    parser.add_option("--convert",
+                      dest="convert",
+                      action="store",
+                      metavar="new cdict file",
+                      help="(Deprecated) migrate to new encoding with runtime aggregation into switch"
+                      )
+    (options, args) = parser.parse_args()
 
-if not args:
-    print 'Missing cdict file'
-    sys.exit(1)
+    if options.from_time:
+        from_time = int(options.from_time) * 1000
+    if options.cap_time:
+        # convert to usec
+        cap_time = int(options.cap_time) * 1000 + from_time
 
-cdict_file = args[0]
-perf_dict = open_cdict(cdict_file, options.map)
+    if not args:
+        print 'Missing cdict file'
+        sys.exit(1)
 
-df = DataFrame(perf_dict)
-set_html_file(cdict_file, options.headless, options.label)
+    cdict_file = args[0]
+    perf_dict = open_cdict(cdict_file, options.map)
 
-# filter on usecs
-if from_time:
-    df = df[df['usecs'] >= from_time]
-if cap_time:
-    df = df[df['usecs'] <= cap_time]
+    df = DataFrame(perf_dict)
+    set_html_file(cdict_file, options.headless, options.label)
 
-if not options.label:
-    options.label = os.path.splitext(os.path.basename(cdict_file))[0]
+    # filter on usecs
+    if from_time:
+        df = df[df['usecs'] >= from_time]
+    if cap_time:
+        df = df[df['usecs'] <= cap_time]
 
-if options.convert:
-    convert(df, options.convert)
-    sys.exit(0)
+    if not options.label:
+        options.label = os.path.splitext(os.path.basename(cdict_file))[0]
 
-if options.show_tids:
-    res = df.groupby(['pid', 'task_name']).size()
-    res.sort_values(ascending=False, inplace=True)
-    print 'List of tids and task names sorted by context switches and kvm event count'
-    print res
-    sys.exit(0)
+    if options.convert:
+        convert(df, options.convert)
+        sys.exit(0)
 
-if options.successor_of_task:
-    show_successors(df, options.successor_of_task, options.label)
-    sys.exit(0)
+    if options.show_tids:
+        res = df.groupby(['pid', 'task_name']).size()
+        res.sort_values(ascending=False, inplace=True)
+        print 'List of tids and task names sorted by context switches and kvm event count'
+        print res
+        sys.exit(0)
 
-# These options can be cumulative and all require a --task parameter to select tasks
-if not options.task:
-    print '--task <task_regex> is required'
-    sys.exit(1)
+    if options.successor_of_task:
+        show_successors(df, options.successor_of_task, options.label)
+        sys.exit(0)
 
-if options.core_runtime:
-    show_core_runs(df, options.task, options.label, True)
+    # These options can be cumulative and all require a --task parameter to select tasks
+    if not options.task:
+        print '--task <task_regex> is required'
+        sys.exit(1)
 
-if options.core_switches:
-    show_core_runs(df, options.task, options.label, False)
+    if options.core_runtime:
+        show_core_runs(df, options.task, options.label, True)
 
-if options.core_loc:
-    show_core_locality(df, options.task, options.label)
+    if options.core_switches:
+        show_core_runs(df, options.task, options.label, False)
 
-if options.switches or options.kvm_exits:
-    show_sw_kvm_heatmap(df, options.task, options.label, options.switches, options.kvm_exits)
+    if options.core_loc:
+        show_core_locality(df, options.task, options.label)
 
-if options.kvm_exit_types:
-    show_kvm_exit_types(df, options.task, options.label)
+    if options.switches or options.kvm_exits:
+        show_sw_kvm_heatmap(df, options.task, options.label, options.switches, options.kvm_exits)
+
+    if options.kvm_exit_types:
+        show_kvm_exit_types(df, options.task, options.label)
+
+if __name__ == '__main__':
+    main()

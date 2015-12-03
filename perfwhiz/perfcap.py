@@ -41,7 +41,7 @@ perf_binary = 'perf'
 # By default, qemu-system-x86:13568 becomes qemu.vcpu0:13568 (for example)
 #
 
-def get_curated_latency_table(table):
+def get_curated_latency_table(opts, table):
     try:
         perf_formatter.init(opts)
     except ImportError:
@@ -103,7 +103,7 @@ def capture_stats(opts, stats_filename):
         print 'Error displaying scheduling latency'
     else:
         # curate the process names before displaying
-        results = get_curated_latency_table(results)
+        results = get_curated_latency_table(opts, results)
 
     with open(stats_filename, 'w') as ff:
         ff.write(results)
@@ -158,7 +158,7 @@ def capture(opts, run_name):
         except OSError:
             print 'Error: perf does not seems to be installed'
 
-if __name__ == '__main__':
+def main():
     parser = OptionParser(usage="usage: %prog [options] [<run-name>]")
 
     parser.add_option('--stats', dest='stats',
@@ -285,3 +285,6 @@ if __name__ == '__main__':
         print 'Overriding perf binary with: ' + perf_binary
 
     capture(opts, run_name)
+
+if __name__ == '__main__':
+    main()
