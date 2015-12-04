@@ -18,6 +18,7 @@
 
 import bokeh.plotting
 from bokeh.plotting import output_file
+import os
 
 # Standard title attribute for all figures
 title_style = {'title_text_font_size': '12pt',
@@ -26,18 +27,47 @@ title_style = {'title_text_font_size': '12pt',
 grid_title_style = {'title_text_font_size': '10pt',
                     'title_text_font_style': 'bold'}
 
-def set_html_file(cdict_file, headless, label):
-    global html_file
-    html_file = cdict_file.replace('.cdict', '')
+def set_html_file(cdict_file, headless, label, output_dir):
+    '''Sets the final html file name prefix and output directory
+    if output_dir is None then use same output directory as cdict_file (can be relative)
+    else use that directory
+
+    prefix is set as following:
+    if label is None use cdict basename, remove the .cdict extension and append the task_re
+    else use label as prefix and do not append the task_re
+
+    :param cdict_file: e.g. ../../perf.cdict
+    :param headless:
+    :param label: will replace all space with _
+    :param output_dir:
+    :return:
+    '''
     global output_chart
+
+    # the full prefix of the output file with directory pathname
+    global output_file_prefix
+    global ignore_task_re
+
     if headless:
         output_chart = bokeh.plotting.save
     else:
         output_chart = bokeh.plotting.show
-    global label_prefix
+
     if label:
-        label = label.replace(' ', '-')
-    label_prefix = label
+        ignore_task_re = True
+        output_file_base = label.replace(' ', '-')
+    else:
+        ignore_task_re = False
+        output_file_base = os.path.basename(cdict_file).replace('.cdict', '')
+
+    if output_dir:
+        output_file_dir = output_dir
+    else:
+        output_file_dir = os.path.dirname(cdict_file)
+
+    if output_file_dir and output_file_dir[-1] != '/':
+        output_file_dir += '/'
+    output_file_prefix = output_file_dir + output_file_base
 
 # calculate the time between the 1st entry and the last entry in msec
 def get_time_span_msec(df):
@@ -72,10 +102,11 @@ def get_disc_size(count):
     return 6
 
 def output_html(chart, chart_type, task_re):
-    if label_prefix:
-        filename = label_prefix + '-' + chart_type + '.html'
+    filename = output_file_prefix + '-' + chart_type
+    if ignore_task_re:
+        filename += '.html'
     else:
-        filename = html_file + '_' + chart_type + '_' + task_re + '.html'
+        filename += '_' + task_re + '.html'
     bokeh.plotting.output_file(filename)
     print('Saved to ' + filename)
     output_chart(chart)

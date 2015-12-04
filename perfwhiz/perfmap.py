@@ -134,6 +134,8 @@ def convert(df, new_cdict):
 # ---------------------------------- MAIN -----------------------------------------
 
 def main():
+    global from_time
+    global cap_time
 
     # Suppress future warnings
     warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -196,6 +198,12 @@ def main():
                       metavar="mapping csv file",
                       help="remap task names from mapping csv file"
                       )
+    parser.add_option("--output-dir",
+                      dest="output_dir",
+                      action="store",
+                      metavar="dir pathname",
+                      help="output all html files to the provided directory"
+                      )
     parser.add_option("--headless",
                       dest="headless",
                       action="store_true",
@@ -211,7 +219,6 @@ def main():
                       help="(optional) start the analysis after first <from_time> msec"
                            " of capture (default=0)"
                       )
-
     parser.add_option("--convert",
                       dest="convert",
                       action="store",
@@ -231,10 +238,17 @@ def main():
         sys.exit(1)
 
     cdict_file = args[0]
+
+    if options.output_dir:
+        if not os.path.isdir(options.output_dir):
+            print('Invalid output directory: ' + options.output_dir)
+            sys.exit(1)
+
+    set_html_file(cdict_file, options.headless, options.label, options.output_dir)
+
     perf_dict = open_cdict(cdict_file, options.map)
 
     df = DataFrame(perf_dict)
-    set_html_file(cdict_file, options.headless, options.label)
 
     # filter on usecs
     if from_time:
