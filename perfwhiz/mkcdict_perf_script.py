@@ -37,6 +37,7 @@ except ImportError:
     from umsgpack import packb
 import zlib
 
+# pandas dataframe friendly data structures
 event_name_list = []
 cpu_list = []
 usecs_list = []
@@ -58,6 +59,7 @@ event_drops = {}
 event_counts = {}
 
 def drop_event(event_name):
+
     try:
         event_drops[event_name] += 1
     except KeyError:
@@ -197,43 +199,79 @@ def add_kvm_event(name, cpu, secs, nsecs, pid, comm, prev_usecs, reason=None):
     count_event(name)
     return usecs
 
-def sched__sched_stat_sleep(event_name, context, common_cpu,
-                            common_secs, common_nsecs, common_pid, common_comm,
-                            comm, pid, delay):
+#
+# Due to a commit in the perf code that breaks compatibility with the perf python script
+# we have to use list args for all callbacks in order to support perf versions
+# pre and post patch (check commit 0f5f5bcd in the linux code):
+# def sched__sched_stat_sleep(event_name, context, common_cpu,
+# 	common_secs, common_nsecs, common_pid, common_comm,
+# -	comm, pid, delay):
+# +	common_callchain, comm, pid, delay):
+#
+# Luckily the positional arg is always inserted at the 8th position
+#
+# New version callback:
+# def sched__sched_stat_sleep(event_name, context, common_cpu,
+#                             common_secs, common_nsecs, common_pid, common_comm,
+#                             common_callchain, comm, pid, delay):
+# versus old version callback:
+# def sched__sched_stat_sleep(event_name, context, common_cpu,
+#                             common_secs, common_nsecs, common_pid, common_comm,
+#                             common_callchain, comm, pid, delay):
+# The fix for this is pick a default of new signature (always favor new versions)
+# and if the argument list is 1 short of the target function arg list, then insert
+# a None argument at position 8 (which is index 7 in the list) before calling the
+# target function
+#
+def _dispatch(target, *args):
+    arg_count = target.__code__.co_argcount
+    if len(args) != arg_count:
+        largs = list(args)
+        largs.insert(7, None)
+        args = tuple(largs)
+        # note that any error case like arg list shorter than 7 or
+        # signature mismatch after insertion will result in a runtime error
+        # which is ok
+    target(*args)
+
+def _sched__sched_stat_sleep(event_name, context, common_cpu,
+                             common_secs, common_nsecs, common_pid, common_comm,
+                             common_callchain,
+                             comm, pid, delay):
     # the delay (time slept) applies to comm/pid
     # not common_comm/common_pid
     add_event(event_name, common_cpu, common_secs, common_nsecs, pid, comm, delay)
 
+def sched__sched_stat_sleep(*args):
+    _dispatch(sched__sched_stat_sleep, *args)
 
-def sched__sched_wakeup_new(event_name, context, common_cpu,
-                            common_secs, common_nsecs, common_pid, common_comm,
-                            comm, pid, prio, success,
-                            target_cpu):
-    drop_event(event_name)
+def sched__sched_wakeup_new(*args):
+    drop_event(args[0])
 
-
-def sched__sched_wakeup(event_name, context, common_cpu,
-                        common_secs, common_nsecs, common_pid, common_comm,
-                        comm, pid, prio, success,
-                        target_cpu):
-    drop_event(event_name)
+def sched__sched_wakeup(*args):
+    drop_event(args[0])
 
 # A dict of runtime delays accumulated indexed by cpu
 runtime_by_cpu = {}
 
-def sched__sched_stat_runtime(event_name, context, common_cpu,
-                              common_secs, common_nsecs, common_pid, common_comm,
-                              comm, pid, runtime, vruntime):
+def _sched__sched_stat_runtime(event_name, context, common_cpu,
+                               common_secs, common_nsecs, common_pid, common_comm,
+                               common_callchain,
+                               comm, pid, runtime, vruntime):
     try:
         runtime_by_cpu[common_cpu] += runtime
     except KeyError:
         # the counter is set in on the first sched switch for each cpu
         pass
 
-def sched__sched_switch(event_name, context, common_cpu,
-                        common_secs, common_nsecs, common_pid, common_comm,
-                        prev_comm, prev_pid, prev_prio, prev_state,
-                        next_comm, next_pid, next_prio):
+def sched__sched_stat_runtime(*args):
+    _dispatch(_sched__sched_stat_runtime, *args)
+
+def _sched__sched_switch(event_name, context, common_cpu,
+                         common_secs, common_nsecs, common_pid, common_comm,
+                         common_callchain,
+                         prev_comm, prev_pid, prev_prio, prev_state,
+                         next_comm, next_pid, next_prio):
     try:
         runtime = runtime_by_cpu[common_cpu]
         add_event(event_name, common_cpu, common_secs, common_nsecs, prev_pid, prev_comm, runtime, next_pid, next_comm)
@@ -241,11 +279,17 @@ def sched__sched_switch(event_name, context, common_cpu,
         pass
     runtime_by_cpu[common_cpu] = 0
 
-def sched__sched_stat_iowait(event_name, context, common_cpu,
-                             common_secs, common_nsecs, common_pid, common_comm,
-                             comm, pid, delay):
+def sched__sched_switch(*args):
+    _dispatch(_sched__sched_switch, *args)
+
+def _sched__sched_stat_iowait(event_name, context, common_cpu,
+                              common_secs, common_nsecs, common_pid, common_comm,
+                              common_callchain,
+                              comm, pid, delay):
     add_event(event_name, common_cpu, common_secs, common_nsecs, pid, comm, delay)
 
+def sched__sched_stat_iowait(*args):
+    _dispatch(_sched__sched_stat_iowait, *args)
 
 class KvmTime(object):
     def __init__(self, tid):
@@ -271,9 +315,9 @@ class KvmTime(object):
 # A dict of last kvm entry/exit time indexed by tid
 kvm_time_dict = {}
 
-def kvm__kvm_entry(event_name, context, common_cpu,
-                   common_secs, common_nsecs, common_pid, common_comm,
-                   vcpu_id):
+def _kvm__kvm_entry(event_name, context, common_cpu,
+                    common_secs, common_nsecs, common_pid, common_comm,
+                    vcpu_id):
     try:
         kt = kvm_time_dict[common_pid]
     except:
@@ -281,367 +325,184 @@ def kvm__kvm_entry(event_name, context, common_cpu,
         kvm_time_dict[common_pid] = kt
     kt.add_entry(common_cpu, common_secs, common_nsecs, common_comm)
 
-def kvm__kvm_exit(event_name, context, common_cpu,
-                  common_secs, common_nsecs, common_pid, common_comm,
-                  exit_reason, guest_rip, isa, info1,
-                  info2):
-    try:
-        kt = kvm_time_dict[common_pid]
-    except:
-        kt = KvmTime(common_pid)
-        kvm_time_dict[common_pid] = kt
-    kt.add_exit(common_cpu, common_secs, common_nsecs, common_comm, exit_reason)
+def kvm__kvm_entry(*args):
+    _dispatch(_kvm__kvm_entry, *args)
 
-# These are scale down versions of kvm__kvm_entry/exit that only require the minimum arguments
-# used for manual parsing when the perf python extension is not compiled in
-def kvm_entry(common_cpu, common_secs, common_nsecs, common_pid, common_comm):
-    try:
-        kt = kvm_time_dict[common_pid]
-    except:
-        kt = KvmTime(common_pid)
-        kvm_time_dict[common_pid] = kt
-    kt.add_entry(common_cpu, common_secs, common_nsecs, common_comm)
-
-def kvm_exit(common_cpu, common_secs, common_nsecs, common_pid, common_comm, exit_reason):
-    try:
-        kt = kvm_time_dict[common_pid]
-    except:
-        kt = KvmTime(common_pid)
-        kvm_time_dict[common_pid] = kt
-    kt.add_exit(common_cpu, common_secs, common_nsecs, common_comm, exit_reason)
-
-def sched__sched_process_hang(event_name, context, common_cpu,
-                              common_secs, common_nsecs, common_pid, common_comm,
-                              comm, pid):
-    drop_event(event_name)
-
-
-def sched__sched_pi_setprio(event_name, context, common_cpu,
-                            common_secs, common_nsecs, common_pid, common_comm,
-                            comm, pid, oldprio, newprio):
-    drop_event(event_name)
-
-
-def sched__sched_stat_blocked(event_name, context, common_cpu,
-                              common_secs, common_nsecs, common_pid, common_comm,
-                              comm, pid, delay):
-    drop_event(event_name)
-
-
-def sched__sched_stat_wait(event_name, context, common_cpu,
-                           common_secs, common_nsecs, common_pid, common_comm,
-                           comm, pid, delay):
-    drop_event(event_name)
-
-
-def sched__sched_process_exec(event_name, context, common_cpu,
-                              common_secs, common_nsecs, common_pid, common_comm,
-                              filename, pid, old_pid):
-    drop_event(event_name)
-
-
-def sched__sched_process_fork(event_name, context, common_cpu,
-                              common_secs, common_nsecs, common_pid, common_comm,
-                              parent_comm, parent_pid, child_comm, child_pid):
-    drop_event(event_name)
-
-
-def sched__sched_process_wait(event_name, context, common_cpu,
-                              common_secs, common_nsecs, common_pid, common_comm,
-                              comm, pid, prio):
-    drop_event(event_name)
-
-
-def sched__sched_wait_task(event_name, context, common_cpu,
-                           common_secs, common_nsecs, common_pid, common_comm,
-                           comm, pid, prio):
-    drop_event(event_name)
-
-
-def sched__sched_process_exit(event_name, context, common_cpu,
-                              common_secs, common_nsecs, common_pid, common_comm,
-                              comm, pid, prio):
-    drop_event(event_name)
-
-
-def sched__sched_process_free(event_name, context, common_cpu,
-                              common_secs, common_nsecs, common_pid, common_comm,
-                              comm, pid, prio):
-    drop_event(event_name)
-
-
-def sched__sched_migrate_task(event_name, context, common_cpu,
-                              common_secs, common_nsecs, common_pid, common_comm,
-                              comm, pid, prio, orig_cpu,
-                              dest_cpu):
-    drop_event(event_name)
-
-
-def sched__sched_kthread_stop_ret(event_name, context, common_cpu,
-                                  common_secs, common_nsecs, common_pid, common_comm,
-                                  ret):
-    drop_event(event_name)
-
-
-def sched__sched_kthread_stop(event_name, context, common_cpu,
-                              common_secs, common_nsecs, common_pid, common_comm,
-                              comm, pid):
-    drop_event(event_name)
-
-
-def kvm__kvm_async_pf_completed(event_name, context, common_cpu,
-                                common_secs, common_nsecs, common_pid, common_comm,
-                                address, gva):
-    drop_event(event_name)
-
-
-def kvm__kvm_async_pf_ready(event_name, context, common_cpu,
-                            common_secs, common_nsecs, common_pid, common_comm,
-                            token, gva):
-    drop_event(event_name)
-
-
-def kvm__kvm_async_pf_not_present(event_name, context, common_cpu,
-                                  common_secs, common_nsecs, common_pid, common_comm,
-                                  token, gva):
-    drop_event(event_name)
-
-
-def kvm__kvm_async_pf_doublefault(event_name, context, common_cpu,
-                                  common_secs, common_nsecs, common_pid, common_comm,
-                                  gva, gfn):
-    drop_event(event_name)
-
-
-def kvm__kvm_try_async_get_page(event_name, context, common_cpu,
-                                common_secs, common_nsecs, common_pid, common_comm,
-                                gva, gfn):
-    drop_event(event_name)
-
-
-def kvm__kvm_age_page(event_name, context, common_cpu,
-                      common_secs, common_nsecs, common_pid, common_comm,
-                      hva, gfn, referenced):
-    drop_event(event_name)
-
-
-def kvm__kvm_fpu(event_name, context, common_cpu,
-                 common_secs, common_nsecs, common_pid, common_comm,
-                 load):
-    drop_event(event_name)
-
-
-def kvm__kvm_mmio(event_name, context, common_cpu,
-                  common_secs, common_nsecs, common_pid, common_comm,
-                  type, len, gpa, val):
-    drop_event(event_name)
-
-
-def kvm__kvm_ack_irq(event_name, context, common_cpu,
-                     common_secs, common_nsecs, common_pid, common_comm,
-                     irqchip, pin):
-    drop_event(event_name)
-
-
-def kvm__kvm_msi_set_irq(event_name, context, common_cpu,
-                         common_secs, common_nsecs, common_pid, common_comm,
-                         address, data):
-    drop_event(event_name)
-
-
-def kvm__kvm_ioapic_set_irq(event_name, context, common_cpu,
-                            common_secs, common_nsecs, common_pid, common_comm,
-                            e, pin, coalesced):
-    drop_event(event_name)
-
-
-def kvm__kvm_set_irq(event_name, context, common_cpu,
-                     common_secs, common_nsecs, common_pid, common_comm,
-                     gsi, level, irq_source_id):
-    drop_event(event_name)
-
-
-def kvm__kvm_userspace_exit(event_name, context, common_cpu,
-                            common_secs, common_nsecs, common_pid, common_comm,
-                            reason, errno):
-    drop_event(event_name)
-
-
-def kvm__kvm_track_tsc(event_name, context, common_cpu,
-                       common_secs, common_nsecs, common_pid, common_comm,
-                       vcpu_id, nr_vcpus_matched_tsc, online_vcpus, use_master_clock,
-                       host_clock):
-    drop_event(event_name)
-
-
-def kvm__kvm_update_master_clock(event_name, context, common_cpu,
-                                 common_secs, common_nsecs, common_pid, common_comm,
-                                 use_master_clock, host_clock, offset_matched):
-    drop_event(event_name)
-
-
-def kvm__kvm_write_tsc_offset(event_name, context, common_cpu,
-                              common_secs, common_nsecs, common_pid, common_comm,
-                              vcpu_id, previous_tsc_offset, next_tsc_offset):
-    drop_event(event_name)
-
-
-def kvm__vcpu_match_mmio(event_name, context, common_cpu,
-                         common_secs, common_nsecs, common_pid, common_comm,
-                         gva, gpa, write, gpa_match):
-    drop_event(event_name)
-
-
-def kvm__kvm_emulate_insn(event_name, context, common_cpu,
-                          common_secs, common_nsecs, common_pid, common_comm,
-                          rip, csbase, len, insn,
-                          flags, failed):
-    drop_event(event_name)
-
-
-def kvm__kvm_skinit(event_name, context, common_cpu,
-                    common_secs, common_nsecs, common_pid, common_comm,
-                    rip, slb):
-    drop_event(event_name)
-
-
-def kvm__kvm_invlpga(event_name, context, common_cpu,
-                     common_secs, common_nsecs, common_pid, common_comm,
-                     rip, asid, address):
-    drop_event(event_name)
-
-
-def kvm__kvm_nested_intr_vmexit(event_name, context, common_cpu,
-                                common_secs, common_nsecs, common_pid, common_comm,
-                                rip):
-    drop_event(event_name)
-
-
-def kvm__kvm_nested_vmexit_inject(event_name, context, common_cpu,
-                                  common_secs, common_nsecs, common_pid, common_comm,
-                                  exit_code, exit_info1, exit_info2, exit_int_info,
-                                  exit_int_info_err, isa):
-    drop_event(event_name)
-
-
-def kvm__kvm_nested_vmexit(event_name, context, common_cpu,
-                           common_secs, common_nsecs, common_pid, common_comm,
-                           rip, exit_code, exit_info1, exit_info2,
-                           exit_int_info, exit_int_info_err, isa):
-    drop_event(event_name)
-
-
-def kvm__kvm_nested_intercepts(event_name, context, common_cpu,
-                               common_secs, common_nsecs, common_pid, common_comm,
-                               cr_read, cr_write, exceptions, intercept):
-    drop_event(event_name)
-
-
-def kvm__kvm_nested_vmrun(event_name, context, common_cpu,
-                          common_secs, common_nsecs, common_pid, common_comm,
-                          rip, vmcb, nested_rip, int_ctl,
-                          event_inj, npt):
-    drop_event(event_name)
-
-
-def kvm__kvm_pv_eoi(event_name, context, common_cpu,
-                    common_secs, common_nsecs, common_pid, common_comm,
-                    apicid, vector):
-    drop_event(event_name)
-
-
-def kvm__kvm_eoi(event_name, context, common_cpu,
-                 common_secs, common_nsecs, common_pid, common_comm,
-                 apicid, vector):
-    drop_event(event_name)
-
-
-def kvm__kvm_apic_accept_irq(event_name, context, common_cpu,
-                             common_secs, common_nsecs, common_pid, common_comm,
-                             apicid, dm, tm, vec,
-                             coalesced):
-    drop_event(event_name)
-
-
-def kvm__kvm_apic_ipi(event_name, context, common_cpu,
-                      common_secs, common_nsecs, common_pid, common_comm,
-                      icr_low, dest_id):
-    drop_event(event_name)
-
-
-def kvm__kvm_pic_set_irq(event_name, context, common_cpu,
-                         common_secs, common_nsecs, common_pid, common_comm,
-                         chip, pin, elcr, imr,
-                         coalesced):
-    drop_event(event_name)
-
-
-def kvm__kvm_apic(event_name, context, common_cpu,
-                  common_secs, common_nsecs, common_pid, common_comm,
-                  rw, reg, val):
-    drop_event(event_name)
-
-
-def kvm__kvm_cr(event_name, context, common_cpu,
-                common_secs, common_nsecs, common_pid, common_comm,
-                rw, cr, val):
-    drop_event(event_name)
-
-
-def kvm__kvm_msr(event_name, context, common_cpu,
-                 common_secs, common_nsecs, common_pid, common_comm,
-                 write, ecx, data, exception):
-    drop_event(event_name)
-
-
-def kvm__kvm_page_fault(event_name, context, common_cpu,
-                        common_secs, common_nsecs, common_pid, common_comm,
-                        fault_address, error_code):
-    drop_event(event_name)
-
-
-def kvm__kvm_inj_exception(event_name, context, common_cpu,
-                           common_secs, common_nsecs, common_pid, common_comm,
-                           exception, has_error, error_code):
-    drop_event(event_name)
-
-
-def kvm__kvm_inj_virq(event_name, context, common_cpu,
-                      common_secs, common_nsecs, common_pid, common_comm,
-                      irq):
-    drop_event(event_name)
-
-
-def kvm__kvm_cpuid(event_name, context, common_cpu,
+def _kvm__kvm_exit(event_name, context, common_cpu,
                    common_secs, common_nsecs, common_pid, common_comm,
-                   function, rax, rbx, rcx,
-                   rdx):
-    drop_event(event_name)
+                   exit_reason, guest_rip, isa, info1,
+                   info2):
+    try:
+        kt = kvm_time_dict[common_pid]
+    except:
+        kt = KvmTime(common_pid)
+        kvm_time_dict[common_pid] = kt
+    kt.add_exit(common_cpu, common_secs, common_nsecs, common_comm, exit_reason)
 
+def kvm__kvm_exit(*args):
+    _dispatch(_kvm__kvm_exit, *args)
 
-def kvm__kvm_pio(event_name, context, common_cpu,
-                 common_secs, common_nsecs, common_pid, common_comm,
-                 rw, port, size, count, val=None):
-    drop_event(event_name)
+def sched__sched_process_hang(*args):
+    drop_event(args[0])
 
+def sched__sched_pi_setprio(*args):
+    drop_event(args[0])
 
-def kvm__kvm_hv_hypercall(event_name, context, common_cpu,
-                          common_secs, common_nsecs, common_pid, common_comm,
-                          rep_cnt, rep_idx, ingpa, outgpa,
-                          code, fast):
-    drop_event(event_name)
+def sched__sched_stat_blocked(*args):
+    drop_event(args[0])
 
+def sched__sched_stat_wait(*args):
+    drop_event(args[0])
 
-def kvm__kvm_hypercall(event_name, context, common_cpu,
-                       common_secs, common_nsecs, common_pid, common_comm,
-                       nr, a0, a1, a2,
-                       a3):
-    drop_event(event_name)
+def sched__sched_process_exec(*args):
+    drop_event(args[0])
 
-def kvm__kvm_ple_window(event_name, context, common_cpu,
-                        common_secs, common_nsecs, common_pid, common_comm,
-                        grow, vcpu_id, new, old):
-    drop_event(event_name)
+def sched__sched_process_fork(*args):
+    drop_event(args[0])
+
+def sched__sched_process_wait(*args):
+    drop_event(args[0])
+
+def sched__sched_wait_task(*args):
+    drop_event(args[0])
+
+def sched__sched_process_exit(*args):
+    drop_event(args[0])
+
+def sched__sched_process_free(*args):
+    drop_event(args[0])
+
+def sched__sched_migrate_task(*args):
+    drop_event(args[0])
+
+def sched__sched_kthread_stop_ret(*args):
+    drop_event(args[0])
+
+def sched__sched_kthread_stop(*args):
+    drop_event(args[0])
+
+def kvm__kvm_async_pf_completed(*args):
+    drop_event(args[0])
+
+def kvm__kvm_async_pf_ready(*args):
+    drop_event(args[0])
+
+def kvm__kvm_async_pf_not_present(*args):
+    drop_event(args[0])
+
+def kvm__kvm_async_pf_doublefault(*args):
+    drop_event(args[0])
+
+def kvm__kvm_try_async_get_page(*args):
+    drop_event(args[0])
+
+def kvm__kvm_age_page(*args):
+    drop_event(args[0])
+
+def kvm__kvm_fpu(*args):
+    drop_event(args[0])
+
+def kvm__kvm_mmio(*args):
+    drop_event(args[0])
+
+def kvm__kvm_ack_irq(*args):
+    drop_event(args[0])
+
+def kvm__kvm_msi_set_irq(*args):
+    drop_event(args[0])
+
+def kvm__kvm_ioapic_set_irq(*args):
+    drop_event(args[0])
+
+def kvm__kvm_set_irq(*args):
+    drop_event(args[0])
+
+def kvm__kvm_userspace_exit(*args):
+    drop_event(args[0])
+
+def kvm__kvm_track_tsc(*args):
+    drop_event(args[0])
+
+def kvm__kvm_update_master_clock(*args):
+    drop_event(args[0])
+
+def kvm__kvm_write_tsc_offset(*args):
+    drop_event(args[0])
+
+def kvm__vcpu_match_mmio(*args):
+    drop_event(args[0])
+
+def kvm__kvm_emulate_insn(*args):
+    drop_event(args[0])
+
+def kvm__kvm_skinit(*args):
+    drop_event(args[0])
+
+def kvm__kvm_invlpga(*args):
+    drop_event(args[0])
+
+def kvm__kvm_nested_intr_vmexit(*args):
+    drop_event(args[0])
+
+def kvm__kvm_nested_vmexit_inject(*args):
+    drop_event(args[0])
+
+def kvm__kvm_nested_vmexit(*args):
+    drop_event(args[0])
+
+def kvm__kvm_nested_intercepts(*args):
+    drop_event(args[0])
+
+def kvm__kvm_nested_vmrun(*args):
+    drop_event(args[0])
+
+def kvm__kvm_pv_eoi(*args):
+    drop_event(args[0])
+
+def kvm__kvm_eoi(*args):
+    drop_event(args[0])
+
+def kvm__kvm_apic_accept_irq(*args):
+    drop_event(args[0])
+
+def kvm__kvm_apic_ipi(*args):
+    drop_event(args[0])
+
+def kvm__kvm_pic_set_irq(*args):
+    drop_event(args[0])
+
+def kvm__kvm_apic(*args):
+    drop_event(args[0])
+
+def kvm__kvm_cr(*args):
+    drop_event(args[0])
+
+def kvm__kvm_msr(*args):
+    drop_event(args[0])
+
+def kvm__kvm_page_fault(*args):
+    drop_event(args[0])
+
+def kvm__kvm_inj_exception(*args):
+    drop_event(args[0])
+
+def kvm__kvm_inj_virq(*args):
+    drop_event(args[0])
+
+def kvm__kvm_cpuid(*args):
+    drop_event(args[0])
+
+def kvm__kvm_pio(*args):
+    drop_event(args[0])
+
+def kvm__kvm_hv_hypercall(*args):
+    drop_event(args[0])
+
+def kvm__kvm_hypercall(*args):
+    drop_event(args[0])
+
+def kvm__kvm_ple_window(*args):
+    drop_event(args[0])
 
 def trace_unhandled(event_name, context, event_fields_dict):
     print 'unhandled ' + event_name
