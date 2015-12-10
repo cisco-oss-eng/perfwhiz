@@ -243,7 +243,7 @@ def _sched__sched_stat_sleep(event_name, context, common_cpu,
     add_event(event_name, common_cpu, common_secs, common_nsecs, pid, comm, delay)
 
 def sched__sched_stat_sleep(*args):
-    _dispatch(sched__sched_stat_sleep, *args)
+    _dispatch(_sched__sched_stat_sleep, *args)
 
 def sched__sched_wakeup_new(*args):
     drop_event(args[0])
@@ -317,6 +317,7 @@ kvm_time_dict = {}
 
 def _kvm__kvm_entry(event_name, context, common_cpu,
                     common_secs, common_nsecs, common_pid, common_comm,
+                    common_callchain,
                     vcpu_id):
     try:
         kt = kvm_time_dict[common_pid]
@@ -330,6 +331,7 @@ def kvm__kvm_entry(*args):
 
 def _kvm__kvm_exit(event_name, context, common_cpu,
                    common_secs, common_nsecs, common_pid, common_comm,
+                   common_callchain,
                    exit_reason, guest_rip, isa, info1,
                    info2):
     try:
