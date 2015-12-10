@@ -119,8 +119,11 @@ def show_exit_type_count(df_all_exits, df_last_exits):
     res.sort_values('total count', inplace=True, ascending=False)
     print res
 
-def show_kvm_exit_types(df, task_re, label):
+def show_kvm_exit_types(dfs, task_re, label):
 
+    for key, df in dfs.iteritems():
+        df['cdict'] = key
+    df = pandas.concat(dfs.values())
     df = df[df['event'] == 'kvm_exit']
     df = df[df['task_name'].str.match(task_re)]
     # the next_comm column contains the exit code

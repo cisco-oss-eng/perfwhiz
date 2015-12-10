@@ -31,11 +31,10 @@ from perf_formatter import write_cdict
 
 from perfmap_common import set_html_file
 
-from perfmap_kvm_exit_types import show_kvm_exit_types
-from perfmap_sw_kvm_exits import show_sw_kvm_heatmap
-
 from perfmap_core import show_core_runs
 from perfmap_core import show_core_locality
+from perfmap_kvm_exit_types import show_kvm_exit_types
+from perfmap_sw_kvm_exits import show_sw_kvm_heatmap
 
 # Global variables
 output_chart = None
@@ -140,7 +139,7 @@ def main():
     # Suppress future warnings
     warnings.simplefilter(action='ignore', category=FutureWarning)
 
-    parser = OptionParser(usage="usage: %prog [options] <cdict_file>")
+    parser = OptionParser(usage="usage: %prog [options] <cdict_file1> [cdict_file2...]")
 
     parser.add_option("--successors-of",
                       dest="successor_of_task",
@@ -158,7 +157,7 @@ def main():
                       help="selected task(s) (regex on task name)"
                       )
     parser.add_option("--core-locality",
-                      dest="core_loc",
+                      dest="core_locality",
                       action="store_true",
                       help="show core locality heat map (requires --task)"
                       )
@@ -168,7 +167,7 @@ def main():
                       help="show % runtime on each core (requires --task)"
                       )
     parser.add_option("--core-switch-count",
-                      dest="core_switches",
+                      dest="core_switch_count",
                       action="store_true",
                       help="show context switch count on each core (requires --task)"
                       )
@@ -242,41 +241,52 @@ def main():
         print 'Missing cdict file'
         sys.exit(1)
 
-    cdict_file = args[0]
-
     if options.output_dir:
         if not os.path.isdir(options.output_dir):
             print('Invalid output directory: ' + options.output_dir)
             sys.exit(1)
 
-    set_html_file(cdict_file, options.headless, options.label, options.output_dir)
+    dfs = {}
+    cdict_files = args
+    html_filename = cdict_files[0] if len(cdict_files) == 0 else 'perfwhiz'
+    set_html_file(html_filename, options.headless, options.label, options.output_dir)
 
-    perf_dict = open_cdict(cdict_file, options.map)
-
-    df = DataFrame(perf_dict)
+    for cdict_file in cdict_files:
+        dkey = cdict_file[cdict_file.rindex('/') + 1:]
+        dkey = dkey[:dkey.rindex('.cdict')]
+        perf_dict = open_cdict(cdict_file, options.map)
+        df = DataFrame(perf_dict)
+        dfs[dkey] = df
 
     # filter on usecs
     if from_time:
-        df = df[df['usecs'] >= from_time]
+        for df in dfs.values():
+            df = df[df['usecs'] >= from_time]
     if cap_time:
-        df = df[df['usecs'] <= cap_time]
+        for df in dfs.values():
+            df = df[df['usecs'] <= cap_time]
 
     if not options.label:
         options.label = os.path.splitext(os.path.basename(cdict_file))[0]
 
     if options.convert:
-        convert(df, options.convert)
+        for df in dfs.values():
+            convert(df, options.convert)
         sys.exit(0)
 
     if options.show_tids:
-        res = df.groupby(['pid', 'task_name']).size()
-        res.sort_values(ascending=False, inplace=True)
         print 'List of tids and task names sorted by context switches and kvm event count'
-        print res
+        for key, df in dfs.iteritems():
+            print key + ':'
+            res = df.groupby(['pid', 'task_name']).size()
+            res.sort_values(ascending=False, inplace=True)
+            print res
         sys.exit(0)
 
     if options.successor_of_task:
-        show_successors(df, options.successor_of_task, options.label)
+        for key, df in dfs.iteritems():
+            print key + ':'
+            show_successors(df, options.successor_of_task, options.label)
         sys.exit(0)
 
     # These options can be cumulative and all require a --task parameter to select tasks
@@ -284,21 +294,25 @@ def main():
         print '--task <task_regex> is required'
         sys.exit(1)
 
+    if options.core_locality:
+        if len(dfs) == 1:
+            show_core_locality(dfs.values()[0], options.task, options.label)
+        else:
+            print 'Core locality is not supported '
+            sys.exit(1)
+
     if options.core_runtime:
-        show_core_runs(df, options.task, options.label, True)
+        show_core_runs(dfs.values()[0], options.task, options.label, True)
 
-    if options.core_switches:
-        show_core_runs(df, options.task, options.label, False)
-
-    if options.core_loc:
-        show_core_locality(df, options.task, options.label)
+    if options.core_switch_count:
+        show_core_runs(dfs.values()[0], options.task, options.label, False)
 
     if options.switches or options.kvm_exits:
-        show_sw_kvm_heatmap(df, options.task, options.label, options.switches, options.kvm_exits,
+        show_sw_kvm_heatmap(dfs.values()[0], options.task, options.label, options.switches, options.kvm_exits,
                             options.show_sleeps)
 
     if options.kvm_exit_types:
-        show_kvm_exit_types(df, options.task, options.label)
+        show_kvm_exit_types(dfs, options.task, options.label)
 
 if __name__ == '__main__':
     main()
