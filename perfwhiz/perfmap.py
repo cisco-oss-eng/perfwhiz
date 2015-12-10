@@ -187,6 +187,11 @@ def main():
                       action="store_true",
                       help="show kvm exit types bar charts (requires --task)"
                       )
+    parser.add_option("--show-sleeps",
+                      dest="show_sleeps",
+                      action="store_true",
+                      help="also show sleep events in the context switch heat map (defaults: hide)"
+                      )
     parser.add_option("--label",
                       dest="label",
                       metavar="label",
@@ -289,7 +294,8 @@ def main():
         show_core_locality(df, options.task, options.label)
 
     if options.switches or options.kvm_exits:
-        show_sw_kvm_heatmap(df, options.task, options.label, options.switches, options.kvm_exits)
+        show_sw_kvm_heatmap(df, options.task, options.label, options.switches, options.kvm_exits,
+                            options.show_sleeps)
 
     if options.kvm_exit_types:
         show_kvm_exit_types(df, options.task, options.label)

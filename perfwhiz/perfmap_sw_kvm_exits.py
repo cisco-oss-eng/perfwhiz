@@ -55,7 +55,7 @@ def split_list(l, n):
     n = max(1, n)
     return [l[i:i + n] for i in range(0, len(l), n)]
 
-def show_sw_kvm_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
+def show_sw_kvm_heatmap(df, task_re, label, show_ctx_switches, show_kvm, show_sleeps):
     gb = get_groupby(df, task_re)
 
     chart_list = []
@@ -66,9 +66,11 @@ def show_sw_kvm_heatmap(df, task_re, label, show_ctx_switches, show_kvm):
     }
     # context switch events
     legend_map_ctx_sw = {
-        'sched__sched_stat_sleep': (RED, 'wakeup from sleep (y=sleep time)', True),
         'sched__sched_switch': (GREEN, 'switched out from cpu (y=run time)', True)
     }
+    if show_sleeps:
+        # note that some versions of Linux do not generate sched__sched_stat_sleep traces
+        legend_map_ctx_sw['sched__sched_stat_sleep'] = (RED, 'wakeup from sleep (y=sleep time)', True)
     if show_kvm and show_ctx_switches:
         legend_map = dict(legend_map_kvm.items() + legend_map_ctx_sw.items())
         title = "Scheduler and KVM events"
