@@ -19,6 +19,7 @@
 
 
 import bokeh.plotting
+from collections import OrderedDict
 from optparse import OptionParser
 import os
 import sys
@@ -129,6 +130,52 @@ def convert(df, new_cdict):
            'next_pid': df['next_pid'].tolist(),
            'next_comm': df['next_comm'].tolist()}
     write_cdict(new_cdict, res)
+
+def reduce_keys(df_dict):
+    '''
+    Reduce the keys of a dictionary of dataframes to minimal non matching characters
+    This will basically trim from the start and end all common strings and keep only the
+    non matching part of the keys.
+    Example of keys: ../../haswell/h1x216.cdict    ../../haswell/h5x113.cdict
+    Resulting reduced keys: h1x216 h5x113
+    :param df_dict:
+    '''
+    key_list = df_dict.keys()
+    if len(key_list) < 2:
+        return df_dict
+    strip_head = None
+    strip_tail = None
+    for key in key_list:
+        if not strip_head:
+            strip_head = key
+            strip_tail = key
+            continue
+        # because there are no duplicates (dict keys are unique) we know that
+        # at least 1 character difference between all keys
+        # find longest match from head
+        max_index = min(len(key), len(strip_head))
+        for index in range(max_index):
+            if key[index] != strip_head[index]:
+                strip_head = key[:index]
+                break
+
+        # find longest match from tail
+        max_index = min(len(key), len(strip_tail))
+        for index in range(-1, -max_index, -1):
+            if key[index] != strip_tail[index]:
+                if index == -1:
+                    strip_tail = ''
+                else:
+                    strip_tail = key[1 + index:]
+                break
+    # strip all keys
+    stripped_dict = OrderedDict()
+    for key in key_list:
+        stripped_key = key[len(strip_head):]
+        if strip_tail:
+            stripped_key = stripped_key[:-len(strip_tail)]
+        stripped_dict[stripped_key] = df_dict[key]
+    return stripped_dict
 
 # ---------------------------------- MAIN -----------------------------------------
 
@@ -246,28 +293,35 @@ def main():
             print('Invalid output directory: ' + options.output_dir)
             sys.exit(1)
 
-    dfs = {}
+    dfs = OrderedDict()
     cdict_files = args
-    html_filename = cdict_files[0] if len(cdict_files) == 0 else 'perfwhiz'
+    if len(cdict_files):
+        if len(cdict_files) > 1:
+            html_filename = cdict_files[0] + '-diff'
+        else:
+            html_filename = cdict_files[0]
+    else:
+        html_filename = cdict_files[0] if len(cdict_files) else 'perfwhiz'
     set_html_file(html_filename, options.headless, options.label, options.output_dir)
 
     for cdict_file in cdict_files:
-        dkey = cdict_file[cdict_file.rindex('/') + 1:]
-        dkey = dkey[:dkey.rindex('.cdict')]
         perf_dict = open_cdict(cdict_file, options.map)
         df = DataFrame(perf_dict)
-        dfs[dkey] = df
-
-    # filter on usecs
-    if from_time:
-        for df in dfs.values():
+        # filter on usecs
+        if from_time:
             df = df[df['usecs'] >= from_time]
-    if cap_time:
-        for df in dfs.values():
+        if cap_time:
             df = df[df['usecs'] <= cap_time]
+        dfs[cdict_file] = df
+
+    # reduce all keys to minimize the length of the cdict file
+    dfs = reduce_keys(dfs)
 
     if not options.label:
-        options.label = os.path.splitext(os.path.basename(cdict_file))[0]
+        if len(dfs) > 1:
+            options.label = 'diff'
+        else:
+            options.label = os.path.splitext(os.path.basename(cdict_file))[0]
 
     if options.convert:
         for df in dfs.values():
@@ -312,7 +366,7 @@ def main():
                             options.show_sleeps)
 
     if options.kvm_exit_types:
-        show_kvm_exit_types(dfs, options.task, options.label)
+        show_kvm_exit_types(dfs, cap_time, options.task, options.label)
 
 if __name__ == '__main__':
     main()
