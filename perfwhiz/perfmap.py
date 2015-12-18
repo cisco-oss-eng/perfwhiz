@@ -304,9 +304,26 @@ def main():
         html_filename = cdict_files[0] if len(cdict_files) else 'perfwhiz'
     set_html_file(html_filename, options.headless, options.label, options.output_dir)
 
+    # get smallest capture window of all cdicts
+    min_cap_usec = 0
     for cdict_file in cdict_files:
         perf_dict = open_cdict(cdict_file, options.map)
         df = DataFrame(perf_dict)
+        dfs[cdict_file] = df
+        last_usec = df['usecs'].iloc[-1]
+        if min_cap_usec == 0:
+            min_cap_usec = last_usec
+        else:
+            min_cap_usec = min(min_cap_usec, last_usec)
+    if from_time and from_time >= min_cap_usec:
+        print 'Error: from time cannot be larger than %d msec' % (min_cap_usec / 1000)
+        sys.exit(2)
+    if not cap_time:
+        cap_time = min_cap_usec
+
+    # remove any row that is not part of the display time window
+    for cdict_file in dfs.keys():
+        df = dfs[cdict_file]
         # filter on usecs
         if from_time:
             df = df[df['usecs'] >= from_time]
