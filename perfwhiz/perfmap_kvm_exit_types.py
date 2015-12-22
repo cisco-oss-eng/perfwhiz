@@ -33,6 +33,7 @@ from bokeh.models.widgets import StringFormatter
 
 from perfmap_common import output_html
 from perfmap_common import get_time_span_msec
+from perfmap_common import aggregate_dfs
 
 # KVM exit reasons
 # Intel64 and IA32 Architecture Software Developer's Manual Vol 3B, System Programming Guide Part 2
@@ -124,37 +125,20 @@ def show_kvm_exit_types(dfs, cap_time_usec, task_re, label):
     # a dict of adjustment ratios indexed by task name for cdicts
     # that require count adjustment due to
     # capture window being too small
-    adjust_count_ratios = {}
-    time_span_msec = 0
-    captime_msec = float(cap_time_usec) / 1000
-    # annotate the task name with the cdict ID it comes from
-    dfl = []
-    for key, df in dfs.iteritems():
-        df = df[df['event'] == 'kvm_exit']
-        df = df[df['task_name'].str.match(task_re)]
-        df['task_name'] = df['task_name'].astype(str) + '-' + key
-        # check the time span
-        tspan_msec = get_time_span_msec(df)
-        time_span_msec = max(time_span_msec, tspan_msec)
-        adjust_ratio = captime_msec / tspan_msec
-        if adjust_ratio >= 1.05:
-            print
-            print 'Warning: counts for %s will be multiplied by %f (capture time %d < %d)' % \
-                  (key, adjust_ratio, tspan_msec, captime_msec)
-            # all these task names require a count adjustment
-            adjust_task_names = pandas.unique(df.task_name.ravel()).tolist()
-            for atn in adjust_task_names:
-                adjust_count_ratios[atn] = adjust_ratio
-        dfl.append(df)
-    df = pandas.concat(dfl)
+    df, adjust_count_ratios = aggregate_dfs(dfs, task_re, cap_time_usec)
     if df.empty:
         print 'Error: No kvm traces matching ' + task_re
         return
+
     # the next_comm column contains the exit code
     exit_codes = Series(KVM_EXIT_REASONS)
     # add  new column containing the exit reason in clear text
     df['exit_reason'] = df['next_comm'].map(exit_codes)
-    time_span_msec = get_time_span_msec(df)
+    # for display in title
+    if cap_time_usec:
+        time_span_msec = cap_time_usec / 1000
+    else:
+        time_span_msec = get_time_span_msec(df)
     df.drop(['cpu', 'duration', 'event', 'next_pid', 'pid', 'next_comm', 'usecs'], inplace=True, axis=1)
 
     # Get the list of exit reasons, sorted alphabetically

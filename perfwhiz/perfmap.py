@@ -318,6 +318,7 @@ def main():
     if from_time and from_time >= min_cap_usec:
         print 'Error: from time cannot be larger than %d msec' % (min_cap_usec / 1000)
         sys.exit(2)
+    # if a cap time is provided, always use that value (even if it is >min_cap_usec)
     if not cap_time:
         cap_time = min_cap_usec
 
@@ -330,6 +331,9 @@ def main():
         if cap_time:
             df = df[df['usecs'] <= cap_time]
         dfs[cdict_file] = df
+    # at this point some cdict entries may have "missing" data
+    # if the requested cap_time is > the cdict cap time
+    # the relevant processing will extrapolate when needed (and if possible)
 
     # reduce all keys to minimize the length of the cdict file
     dfs = reduce_keys(dfs)
@@ -369,7 +373,7 @@ def main():
         if len(dfs) == 1:
             show_core_locality(dfs.values()[0], options.task, options.label)
         else:
-            print 'Core locality is not supported '
+            print 'Core locality diff is not supported - can only accept 1 cdict argument'
             sys.exit(1)
 
     if options.core_runtime:

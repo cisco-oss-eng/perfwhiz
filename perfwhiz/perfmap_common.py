@@ -15,7 +15,7 @@
 #
 #
 # ---------------------------------------------------------
-
+import pandas
 import bokeh.plotting
 from bokeh.plotting import output_file
 import os
@@ -135,3 +135,43 @@ def get_full_task_name(df, task):
         task = df['task_name'].iloc[0]
     task = task + ':' + str(tid)
     return (df, task)
+
+def aggregate_dfs(dfs, task_re, cap_time_usec):
+    '''
+    Aggregate dfs from multiple cdicts into 1 df that has the task names
+    sufficed with the cdict name
+    :param dfs: a dict of df keyed by the cdict file name
+    :param task_re: regex for task names
+    :param cap_time_usec: requested cap time
+    :return: a tuple made of
+        an aggregated df with annotated task names
+        a dict of multipliers indexed by the annotated task name, corresponding to the
+               ratio between the requested cap time and the cdict cap time (always >= 1.0)
+               that should be used to adjust counts
+    '''
+    adjust_count_ratios = {}
+    time_span_msec = 0
+    captime_msec = float(cap_time_usec) / 1000
+    # annotate the task name with the cdict ID it comes from
+    dfl = []
+    for key, df in dfs.iteritems():
+        df = df[df['event'] == 'kvm_exit']
+        df = df[df['task_name'].str.match(task_re)]
+        # add the cdict name to the task name unless there is only 1 cdict file
+        if len(dfs) > 1:
+            df['task_name'] = df['task_name'].astype(str) + '-' + key
+        # check the time span
+        tspan_msec = get_time_span_msec(df)
+        time_span_msec = max(time_span_msec, tspan_msec)
+        adjust_ratio = captime_msec / tspan_msec
+        if adjust_ratio >= 1.05:
+            print
+            print 'Warning: counts for %s will be multiplied by %f (capture time %d < %d)' % \
+                  (key, adjust_ratio, tspan_msec, captime_msec)
+            # all these task names require a count adjustment
+            adjust_task_names = pandas.unique(df.task_name.ravel()).tolist()
+            for atn in adjust_task_names:
+                adjust_count_ratios[atn] = adjust_ratio
+        dfl.append(df)
+    df = pandas.concat(dfl)
+    return df, adjust_count_ratios
