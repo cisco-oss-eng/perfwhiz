@@ -96,19 +96,23 @@ def get_color_value_list(min_count, max_count, palette, range_unit):
         value_list = [x + range_unit for x in value_list]
     return value_list
 
-def show_core_runs(df, task_re, label, duration):
-    time_span_msec = get_time_span_msec(df)
-
+def filter_df_core(df, task_re):
     # remove unneeded columns
-    df = df.drop('next_pid', axis=1)
-    df.drop('pid', axis=1, inplace=True)
-    df.drop('usecs', axis=1, inplace=True)
-    df.drop('next_comm', axis=1, inplace=True)
+    df = df.drop(['next_pid', 'pid', 'usecs', 'next_comm'], axis=1)
 
     # filter out all events except the switch events
     df = df[df.event == 'sched__sched_switch']
     df = df.drop('event', axis=1)
     df = df[df['task_name'].str.match(task_re)]
+    return df
+
+def show_core_runs(dfs, cap_time_usec, task_re, label, duration):
+    df = dfs.values()[0]
+
+    time_span_msec = get_time_span_msec(df)
+
+    # remove unneeded columns
+    df = filter_df_core(df, task_re)
 
     # at this point we have a df that looks like this:
     #         task_name  cpu  duration
@@ -190,6 +194,11 @@ def show_core_runs(df, task_re, label, duration):
         # Add a % column
         dfm['percent'] = ((dfm['count'] - min_count) * 100) / spread
         tooltip_count = ("context switches", "@count")
+        # adjust context switch count if the requested cap time is > time_span
+        multiplier = (float(cap_time_usec) / 1000) / time_span_msec
+        if multiplier > 1.05:
+            time_span_msec = cap_time_usec // 1000
+            dfm['count'] = (dfm['count'].astype(int) * multiplier).astype(int)
         title = "Task Context Switches per Core (%s, %d msec window)" % (label, time_span_msec)
         palette = YlOrRd9[::-1]
         html_prefix = 'core_switches'

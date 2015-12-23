@@ -377,10 +377,10 @@ def main():
             sys.exit(1)
 
     if options.core_runtime:
-        show_core_runs(dfs.values()[0], options.task, options.label, True)
+        show_core_runs(dfs, cap_time, options.task, options.label, True)
 
     if options.core_switch_count:
-        show_core_runs(dfs.values()[0], options.task, options.label, False)
+        show_core_runs(dfs, cap_time, options.task, options.label, False)
 
     if options.switches or options.kvm_exits:
         show_sw_kvm_heatmap(dfs.values()[0], options.task, options.label, options.switches, options.kvm_exits,
