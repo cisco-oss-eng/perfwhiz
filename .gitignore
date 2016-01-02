@@ -29,6 +29,7 @@ nosetests.xml
 
 # perfwhiz
 *.html
+*.svg
 *.cdict
 .cache
 *.ipynb

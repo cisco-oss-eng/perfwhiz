@@ -32,8 +32,6 @@ from bokeh.models.widgets import NumberFormatter
 from bokeh.models.widgets import StringFormatter
 
 from perfmap_common import output_html
-from perfmap_common import get_time_span_msec
-from perfmap_common import aggregate_dfs
 
 # KVM exit reasons
 # Intel64 and IA32 Architecture Software Developer's Manual Vol 3B, System Programming Guide Part 2
@@ -120,12 +118,47 @@ def show_exit_type_count(df_all_exits, df_last_exits):
     res.sort_values('total count', inplace=True, ascending=False)
     print res
 
-def show_kvm_exit_types(dfs, cap_time_usec, task_re, label):
+def aggregate_dfs(dfds, task_re):
+    '''
+    Aggregate dfs from multiple cdicts into 1 df that has the task names
+    sufficed with the cdict name
+    :param dfds: a list of df desc
+    :param task_re: regex for task names
+    :return: a tuple made of
+        an aggregated df with annotated task names
+        a dict of multipliers indexed by the annotated task name, corresponding to the
+               ratio between the requested cap time and the cdict cap time (always >= 1.0)
+               that should be used to adjust counts
+    '''
+    adjust_count_ratios = {}
+    # annotate the task name with the cdict ID it comes from
+    dfl = []
+    for dfd in dfds:
+        df = dfd.df
+        df = df[df['event'] == 'kvm_exit']
+        df = df[df['task_name'].str.match(task_re)]
+        # add the cdict name to the task name unless there is only 1 cdict file
+        if len(dfds) > 1:
+            df['task_name'] = df['task_name'].astype(str) + '-' + dfd.short_name
+        # check the time span
+        if dfd.multiplier >= 1.0:
+            print
+            print 'Warning: counts for %s will be multiplied by %f' % \
+                  (dfd.name, dfd.multiplier)
+            # all these task names require a count adjustment
+            adjust_task_names = pandas.unique(df.task_name.ravel()).tolist()
+            for atn in adjust_task_names:
+                adjust_count_ratios[atn] = dfd.multiplier
+        dfl.append(df)
+    df = pandas.concat(dfl)
+    return df, adjust_count_ratios
+
+def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
 
     # a dict of adjustment ratios indexed by task name for cdicts
     # that require count adjustment due to
     # capture window being too small
-    df, adjust_count_ratios = aggregate_dfs(dfs, task_re, cap_time_usec)
+    df, adjust_count_ratios = aggregate_dfs(dfds, task_re)
     if df.empty:
         print 'Error: No kvm traces matching ' + task_re
         return
@@ -134,11 +167,7 @@ def show_kvm_exit_types(dfs, cap_time_usec, task_re, label):
     exit_codes = Series(KVM_EXIT_REASONS)
     # add  new column containing the exit reason in clear text
     df['exit_reason'] = df['next_comm'].map(exit_codes)
-    # for display in title
-    if cap_time_usec:
-        time_span_msec = cap_time_usec / 1000
-    else:
-        time_span_msec = get_time_span_msec(df)
+
     df.drop(['cpu', 'duration', 'event', 'next_pid', 'pid', 'next_comm', 'usecs'], inplace=True, axis=1)
 
     # Get the list of exit reasons, sorted alphabetically
@@ -159,7 +188,8 @@ def show_kvm_exit_types(dfs, cap_time_usec, task_re, label):
         df.drop(['ratio'], inplace=True, axis=1)
 
     p = Bar(df, label='task_name', values='count', stack='exit_reason',
-            title="KVM Exit count by type per task (%s, %d msec window)" % (label, time_span_msec),
+            title="KVM Exit count by type per task (%s, %d msec window)" %
+                  (label, cap_time_usec // 1000),
             legend='top_right',
             tools="resize,hover,save",
             width=1000, height=800)

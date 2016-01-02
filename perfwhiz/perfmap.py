@@ -31,6 +31,7 @@ from perf_formatter import open_cdict
 from perf_formatter import write_cdict
 
 from perfmap_common import set_html_file
+from perfmap_common import DfDesc
 
 from perfmap_core import show_core_runs
 from perfmap_core import show_core_locality
@@ -131,51 +132,47 @@ def convert(df, new_cdict):
            'next_comm': df['next_comm'].tolist()}
     write_cdict(new_cdict, res)
 
-def reduce_keys(df_dict):
+def set_short_names(dfds):
     '''
-    Reduce the keys of a dictionary of dataframes to minimal non matching characters
+    Reduce the names of a list of dataframe descriptors to minimal non matching characters
     This will basically trim from the start and end all common strings and keep only the
-    non matching part of the keys.
-    Example of keys: ../../haswell/h1x216.cdict    ../../haswell/h5x113.cdict
-    Resulting reduced keys: h1x216 h5x113
-    :param df_dict:
+    non matching part of the names.
+    Example of names: ../../haswell/h1x216.cdict    ../../haswell/h5x113.cdict
+    Resulting reduced names: h1x216 h5x113
     '''
-    key_list = df_dict.keys()
-    if len(key_list) < 2:
-        return df_dict
+    name_list = [dfd.name for dfd in dfds]
+    if len(name_list) < 2:
+        return
     strip_head = None
     strip_tail = None
-    for key in key_list:
+    for name in name_list:
         if not strip_head:
-            strip_head = key
-            strip_tail = key
+            strip_head = name
+            strip_tail = name
             continue
-        # because there are no duplicates (dict keys are unique) we know that
+        # because there are no duplicates we know that
         # at least 1 character difference between all keys
         # find longest match from head
-        max_index = min(len(key), len(strip_head))
+        max_index = min(len(name), len(strip_head))
         for index in range(max_index):
-            if key[index] != strip_head[index]:
-                strip_head = key[:index]
+            if name[index] != strip_head[index]:
+                strip_head = name[:index]
                 break
 
         # find longest match from tail
-        max_index = min(len(key), len(strip_tail))
+        max_index = min(len(name), len(strip_tail))
         for index in range(-1, -max_index, -1):
-            if key[index] != strip_tail[index]:
+            if name[index] != strip_tail[index]:
                 if index == -1:
                     strip_tail = ''
                 else:
-                    strip_tail = key[1 + index:]
+                    strip_tail = name[1 + index:]
                 break
-    # strip all keys
-    stripped_dict = OrderedDict()
-    for key in key_list:
-        stripped_key = key[len(strip_head):]
+    # strip all names and store in the short_name field
+    for dfd in dfds:
+        dfd.short_name = dfd.name[len(strip_head):]
         if strip_tail:
-            stripped_key = stripped_key[:-len(strip_tail)]
-        stripped_dict[stripped_key] = df_dict[key]
-    return stripped_dict
+            dfd.short_name = dfd.short_name[:-len(strip_tail)]
 
 # ---------------------------------- MAIN -----------------------------------------
 
@@ -270,12 +267,6 @@ def main():
                       help="(optional) start the analysis after first <from_time> msec"
                            " of capture (default=0)"
                       )
-    parser.add_option("--convert",
-                      dest="convert",
-                      action="store",
-                      metavar="new cdict file",
-                      help="(Deprecated) migrate to new encoding with runtime aggregation into switch"
-                      )
     (options, args) = parser.parse_args()
 
     if options.from_time:
@@ -293,7 +284,7 @@ def main():
             print('Invalid output directory: ' + options.output_dir)
             sys.exit(1)
 
-    dfs = OrderedDict()
+    dfds = []
     cdict_files = args
     if len(cdict_files):
         if len(cdict_files) > 1:
@@ -309,7 +300,8 @@ def main():
     for cdict_file in cdict_files:
         perf_dict = open_cdict(cdict_file, options.map)
         df = DataFrame(perf_dict)
-        dfs[cdict_file] = df
+        dfd = DfDesc(cdict_file, df)
+        dfds.append(dfd)
         last_usec = df['usecs'].iloc[-1]
         if min_cap_usec == 0:
             min_cap_usec = last_usec
@@ -322,46 +314,36 @@ def main():
     if not cap_time:
         cap_time = min_cap_usec
 
-    # remove any row that is not part of the display time window
-    for cdict_file in dfs.keys():
-        df = dfs[cdict_file]
-        # filter on usecs
-        if from_time:
-            df = df[df['usecs'] >= from_time]
-        if cap_time:
-            df = df[df['usecs'] <= cap_time]
-        dfs[cdict_file] = df
+    # normalize all dataframes
+    for dfd in dfds:
+        dfd.normalize(from_time, cap_time)
+
     # at this point some cdict entries may have "missing" data
     # if the requested cap_time is > the cdict cap time
     # the relevant processing will extrapolate when needed (and if possible)
 
-    # reduce all keys to minimize the length of the cdict file
-    dfs = reduce_keys(dfs)
+    # reduce all names to minimize the length of the cdict file name
+    set_short_names(dfds)
 
     if not options.label:
-        if len(dfs) > 1:
+        if len(dfds) > 1:
             options.label = 'diff'
         else:
             options.label = os.path.splitext(os.path.basename(cdict_file))[0]
 
-    if options.convert:
-        for df in dfs.values():
-            convert(df, options.convert)
-        sys.exit(0)
-
     if options.show_tids:
         print 'List of tids and task names sorted by context switches and kvm event count'
-        for key, df in dfs.iteritems():
-            print key + ':'
-            res = df.groupby(['pid', 'task_name']).size()
+        for dfd in dfds:
+            print dfd.name + ':'
+            res = dfd.df.groupby(['pid', 'task_name']).size()
             res.sort_values(ascending=False, inplace=True)
             print res
         sys.exit(0)
 
     if options.successor_of_task:
-        for key, df in dfs.iteritems():
-            print key + ':'
-            show_successors(df, options.successor_of_task, options.label)
+        for dfd in dfds:
+            print dfd.name + ':'
+            show_successors(dfd.df, options.successor_of_task, options.label)
         sys.exit(0)
 
     # These options can be cumulative and all require a --task parameter to select tasks
@@ -370,24 +352,24 @@ def main():
         sys.exit(1)
 
     if options.core_locality:
-        if len(dfs) == 1:
-            show_core_locality(dfs.values()[0], options.task, options.label)
+        if len(dfds) == 1:
+            show_core_locality(dfds[0].df, options.task, options.label)
         else:
             print 'Core locality diff is not supported - can only accept 1 cdict argument'
             sys.exit(1)
 
     if options.core_runtime:
-        show_core_runs(dfs, cap_time, options.task, options.label, True)
+        show_core_runs(dfds, cap_time, options.task, options.label, True)
 
     if options.core_switch_count:
-        show_core_runs(dfs, cap_time, options.task, options.label, False)
+        show_core_runs(dfds, cap_time, options.task, options.label, False)
 
     if options.switches or options.kvm_exits:
-        show_sw_kvm_heatmap(dfs.values()[0], options.task, options.label, options.switches, options.kvm_exits,
+        show_sw_kvm_heatmap(dfds[0].df, options.task, options.label, options.switches, options.kvm_exits,
                             options.show_sleeps)
 
     if options.kvm_exit_types:
-        show_kvm_exit_types(dfs, cap_time, options.task, options.label)
+        show_kvm_exit_types(dfds, cap_time, options.task, options.label)
 
 if __name__ == '__main__':
     main()

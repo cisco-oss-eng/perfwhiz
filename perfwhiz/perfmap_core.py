@@ -24,6 +24,7 @@ import pandas
 from pandas import DataFrame
 import numpy as np
 
+from bokeh.charts import Bar
 from bokeh.plotting import figure
 from bokeh.models.sources import ColumnDataSource
 from bokeh.models import HoverTool
@@ -32,7 +33,7 @@ from bokeh.palettes import YlOrRd9
 
 from perfmap_common import title_style
 from perfmap_common import output_html
-from perfmap_common import get_time_span_msec
+from perfmap_common import get_time_span_usec
 from perfmap_common import get_disc_size
 
 # For sorting
@@ -96,9 +97,11 @@ def get_color_value_list(min_count, max_count, palette, range_unit):
         value_list = [x + range_unit for x in value_list]
     return value_list
 
-def filter_df_core(df, task_re):
+def filter_df_core(df, task_re, remove_cpu=False):
     # remove unneeded columns
     df = df.drop(['next_pid', 'pid', 'usecs', 'next_comm'], axis=1)
+    if remove_cpu:
+        df = df.drop('cpu', axis=1)
 
     # filter out all events except the switch events
     df = df[df.event == 'sched__sched_switch']
@@ -106,10 +109,73 @@ def filter_df_core(df, task_re):
     df = df[df['task_name'].str.match(task_re)]
     return df
 
-def show_core_runs(dfs, cap_time_usec, task_re, label, duration):
-    df = dfs.values()[0]
+def show_core_runs_diffs(dfds, cap_time_usec, task_re, label, duration):
+    df_list = []
+    for dfd in dfds:
+        df = filter_df_core(dfd.df, task_re, True)
+        # at this point we have a set of df that look like this:
+        #         task_name  duration
+        # 0     ASA.1.vcpu0      7954
+        # 1     ASA.1.vcpu0      5475
+        # 2     ASA.1.vcpu0      4151
+        gb = df.groupby('task_name', as_index=False)
 
-    time_span_msec = get_time_span_msec(df)
+        if duration:
+            # sum all duration for each task
+            df = gb.aggregate(np.sum)
+            if dfd.multiplier > 1.0:
+                df['duration'] = (df['duration'] * dfd.multiplier).astype(int)
+            df['percent'] = ((df['duration'] * 100 * 10) // cap_time_usec) / 10
+        else:
+            # count number of rows with same task and cpu
+            df = DataFrame(gb.size())
+            df.reset_index(inplace=True)
+            df.rename(columns={0: 'count'}, inplace=True)
+            if dfd.multiplier > 1.0:
+                df['count'] = (df['count'] * dfd.multiplier).astype(int)
+        df['group'] = dfd.short_name
+        df_list.append(df)
+    df = pandas.concat(df_list)
+    if duration:
+        values = 'percent'
+        title = 'CPU usage'
+        tooltip = ("cpu", "@height%")
+        ytitle = "CPU (% of 1 core)"
+        html_prefix = 'core-runtime-diff'
+    else:
+        values = 'count'
+        title = 'Context switch count'
+        tooltip = ("Switches", "@height")
+        ytitle = "Context switches"
+        html_prefix = 'core-switch-count-diff'
+    df.reset_index(inplace=True, drop=True)
+    print df
+    p = Bar(df, label='task_name', values=values, group='group',
+            title="%s (%s, %d msec window)" %
+                  (title, label, cap_time_usec // 1000),
+            legend='top_right',
+            tools="resize,hover,save",
+            width=1000, height=800)
+    p._xaxis.axis_label = "Task Name"
+    p._xaxis.axis_label_text_font_size = "12pt"
+    p._yaxis.axis_label = ytitle
+    p._yaxis.axis_label_text_font_size = "12pt"
+    hover = p.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([
+        ("task", "$x"),
+        tooltip
+    ])
+    output_html(p, html_prefix, task_re)
+
+def show_core_runs(dfds, cap_time_usec, task_re, label, duration):
+    if len(dfds) > 1:
+        show_core_runs_diffs(dfds, cap_time_usec, task_re, label, duration)
+        return
+    dfd = dfds[0]
+    df = dfd.df
+
+    cap_time_msec = cap_time_usec // 1000
+    time_span_usec = get_time_span_usec(df)
 
     # remove unneeded columns
     df = filter_df_core(df, task_re)
@@ -135,6 +201,7 @@ def show_core_runs(dfs, cap_time_usec, task_re, label, duration):
         return
     gb = df.groupby(['task_name', 'cpu'], as_index=False)
     if duration:
+        # because we only show percentages, there is no need to apply the multiplier
         # add duration values
         df = gb.aggregate(np.sum)
         max_core = df.cpu.max()
@@ -147,10 +214,10 @@ def show_core_runs(dfs, cap_time_usec, task_re, label, duration):
         # 1   ASA.10.vcpu0     65637
         # 2   ASA.11.vcpu0     81525
         # 3   ASA.12.vcpu0     56488
-        # For each task, the maximum runtime is the time_span_msec (100% of 1 core)
-        # The idle time for each task is therefore time_span_msec * 1000 - sum(duration)
+
+        # For each task, the maximum runtime is the cap_time_usec (100% of 1 core)
+        # The idle time for each task is therefore cap_time_usec - sum(duration)
         dfsum['cpu'] = 'IDLE'
-        time_span_usec = time_span_msec * 1000
         dfsum['duration'] = time_span_usec - dfsum['duration']
 
         # now we need to reinsert that data back to the df
@@ -173,7 +240,7 @@ def show_core_runs(dfs, cap_time_usec, task_re, label, duration):
         dfm.fillna(100, inplace=True)
         dfm.drop(['duration'], axis=1, inplace=True)
         tooltip_count = ("time", "@percent% of core @cpu")
-        title = "Task Run Time %% per Core (%s, %d msec window)" % (label, time_span_msec)
+        title = "Task Run Time %% per Core (%s, %d msec window)" % (label, cap_time_msec)
         # this is YlGnBu9[::-1]  (Reverse the color order so dark is highest value)
         # with an extra intermediate color to make it 10
         palette = ['#ffffd9', '#edf8b1', '#c7e9b4', '#a3dbb7', '#7fcdbb',
@@ -187,6 +254,9 @@ def show_core_runs(dfs, cap_time_usec, task_re, label, duration):
         dfm = DataFrame(gb.size())
         dfm.reset_index(inplace=True)
         dfm.rename(columns={0: 'count'}, inplace=True)
+        # adjust context switch count if the requested cap time is > time_span
+        if dfd.multiplier > 1.0:
+            dfm['count'] = (dfm['count'].astype(int) * dfd.multiplier).astype(int)
         min_count = dfm['count'].min()
         max_count = dfm['count'].max()
         range_unit = ''
@@ -194,12 +264,8 @@ def show_core_runs(dfs, cap_time_usec, task_re, label, duration):
         # Add a % column
         dfm['percent'] = ((dfm['count'] - min_count) * 100) / spread
         tooltip_count = ("context switches", "@count")
-        # adjust context switch count if the requested cap time is > time_span
-        multiplier = (float(cap_time_usec) / 1000) / time_span_msec
-        if multiplier > 1.05:
-            time_span_msec = cap_time_usec // 1000
-            dfm['count'] = (dfm['count'].astype(int) * multiplier).astype(int)
-        title = "Task Context Switches per Core (%s, %d msec window)" % (label, time_span_msec)
+
+        title = "Task Context Switches per Core (%s, %d msec window)" % (label, cap_time_usec // 1000)
         palette = YlOrRd9[::-1]
         html_prefix = 'core_switches'
         max_core = dfm.cpu.max()

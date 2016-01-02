@@ -70,10 +70,10 @@ def set_html_file(cdict_file, headless, label, output_dir):
     output_file_prefix = output_file_dir + output_file_base
 
 # calculate the time between the 1st entry and the last entry in msec
-def get_time_span_msec(df):
-    min_usec = df['usecs'].min()
-    max_usec = df['usecs'].max()
-    return (max_usec - min_usec) / 1000
+def get_time_span_usec(df):
+    min_usec = df['usecs'].iloc[0]
+    max_usec = df['usecs'].iloc[-1]
+    return max_usec - min_usec
 
 # For sorting
 # 'CSR.1.vcpu0' => '0001.CSR.vcpu0'
@@ -136,42 +136,28 @@ def get_full_task_name(df, task):
     task = task + ':' + str(tid)
     return (df, task)
 
-def aggregate_dfs(dfs, task_re, cap_time_usec):
+class DfDesc(object):
+    '''A class to store a dataframe and its metadata:
+    - time constrained df
+    - multiplier (to indicate if the df is under sampled)
+    - name
     '''
-    Aggregate dfs from multiple cdicts into 1 df that has the task names
-    sufficed with the cdict name
-    :param dfs: a dict of df keyed by the cdict file name
-    :param task_re: regex for task names
-    :param cap_time_usec: requested cap time
-    :return: a tuple made of
-        an aggregated df with annotated task names
-        a dict of multipliers indexed by the annotated task name, corresponding to the
-               ratio between the requested cap time and the cdict cap time (always >= 1.0)
-               that should be used to adjust counts
-    '''
-    adjust_count_ratios = {}
-    time_span_msec = 0
-    captime_msec = float(cap_time_usec) / 1000
-    # annotate the task name with the cdict ID it comes from
-    dfl = []
-    for key, df in dfs.iteritems():
-        df = df[df['event'] == 'kvm_exit']
-        df = df[df['task_name'].str.match(task_re)]
-        # add the cdict name to the task name unless there is only 1 cdict file
-        if len(dfs) > 1:
-            df['task_name'] = df['task_name'].astype(str) + '-' + key
-        # check the time span
-        tspan_msec = get_time_span_msec(df)
-        time_span_msec = max(time_span_msec, tspan_msec)
-        adjust_ratio = captime_msec / tspan_msec
-        if adjust_ratio >= 1.05:
-            print
-            print 'Warning: counts for %s will be multiplied by %f (capture time %d < %d)' % \
-                  (key, adjust_ratio, tspan_msec, captime_msec)
-            # all these task names require a count adjustment
-            adjust_task_names = pandas.unique(df.task_name.ravel()).tolist()
-            for atn in adjust_task_names:
-                adjust_count_ratios[atn] = adjust_ratio
-        dfl.append(df)
-    df = pandas.concat(dfl)
-    return df, adjust_count_ratios
+    def __init__(self, cdict_file, df):
+        self.name = cdict_file
+        self.multiplier = 1.0
+        self.df = df
+        self.short_name = cdict_file
+
+    def normalize(self, from_time_usec, cap_time_usec):
+        # remove all samples that are under the start time
+        if from_time_usec:
+            self.df = self.df[self.df['usecs'] >= from_time_usec]
+        last_time_usec = self.df['usecs'].iloc[-1]
+        # usec worth of samples in the df
+        df_span_usec = last_time_usec - from_time_usec
+        if cap_time_usec > df_span_usec:
+            # eg if the requested cap is 1 sec and the df only contains
+            # 500 msec of samples, the multiplier is 2.0
+            self.multiplier = float(cap_time_usec) / df_span_usec
+        # remove all samples that are over the cap
+        self.df = self.df[self.df['usecs'] <= (cap_time_usec + from_time_usec)]
