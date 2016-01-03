@@ -141,7 +141,7 @@ def aggregate_dfs(dfds, task_re):
         if len(dfds) > 1:
             df['task_name'] = df['task_name'].astype(str) + '-' + dfd.short_name
         # check the time span
-        if dfd.multiplier >= 1.0:
+        if dfd.multiplier >= 1.01:
             print
             print 'Warning: counts for %s will be multiplied by %f' % \
                   (dfd.name, dfd.multiplier)

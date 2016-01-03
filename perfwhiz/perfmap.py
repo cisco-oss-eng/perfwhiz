@@ -161,18 +161,21 @@ def set_short_names(dfds):
 
         # find longest match from tail
         max_index = min(len(name), len(strip_tail))
-        for index in range(-1, -max_index, -1):
+        for index in range(-1, -max_index - 1, -1):
+
             if name[index] != strip_tail[index]:
                 if index == -1:
                     strip_tail = ''
                 else:
                     strip_tail = name[1 + index:]
                 break
+
     # strip all names and store in the short_name field
     for dfd in dfds:
         dfd.short_name = dfd.name[len(strip_head):]
         if strip_tail:
             dfd.short_name = dfd.short_name[:-len(strip_tail)]
+
 
 # ---------------------------------- MAIN -----------------------------------------
 
