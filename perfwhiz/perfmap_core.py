@@ -61,7 +61,7 @@ def cycle_colors(chunk, palette=Spectral6):
     """ Build a color list just cycling through a given palette.
 
     Args:
-        chuck (seq): the chunk of elements to generate the color list
+        chunck (seq): the chunk of elements to generate the color list
         palette (seq[color]) : a palette of colors to cycle through
 
     Returns:
@@ -97,6 +97,13 @@ def get_color_value_list(min_count, max_count, palette, range_unit):
         value_list = [x + range_unit for x in value_list]
     return value_list
 
+def get_list_palette(anylist):
+    colors = cycle_colors(anylist)
+    palette = {}
+    for color, elem in zip(colors, anylist):
+        palette[elem] = color
+    return palette
+
 def filter_df_core(df, task_re, remove_cpu=False):
     # remove unneeded columns
     df = df.drop(['next_pid', 'pid', 'usecs', 'next_comm'], axis=1)
@@ -118,6 +125,8 @@ def show_core_runs_diffs(dfds, cap_time_usec, task_re, label, duration):
         # 0     ASA.1.vcpu0      7954
         # 1     ASA.1.vcpu0      5475
         # 2     ASA.1.vcpu0      4151
+        if df.empty:
+            continue
         gb = df.groupby('task_name', as_index=False)
 
         if duration:
@@ -136,6 +145,15 @@ def show_core_runs_diffs(dfds, cap_time_usec, task_re, label, duration):
         df['group'] = dfd.short_name
         df_list.append(df)
     df = pandas.concat(df_list)
+    # because the bokeh grouped bar chart does not order the bars in a group we cannot use
+    # that feature, instead we just merge the cdict name to each task name and do a simple
+    # bar chart
+    # use a different color per task
+    task_palette = get_list_palette(pandas.unique(df.task_name.ravel()).tolist())
+    # Add a color column
+    df['color'] = df.apply(lambda row: task_palette[row['task_name']], axis=1)
+    df['task_name'] = df['task_name'] + '.' + df['group']
+
     if duration:
         values = 'percent'
         title = 'CPU usage'
@@ -149,11 +167,10 @@ def show_core_runs_diffs(dfds, cap_time_usec, task_re, label, duration):
         ytitle = "Context switches"
         html_prefix = 'core-switch-count-diff'
     df.reset_index(inplace=True, drop=True)
-    print df
-    p = Bar(df, label='task_name', values=values, group='group',
+    p = Bar(df, label='task_name', values=values,
+            color='color',
             title="%s (%s, %d msec window)" %
                   (title, label, cap_time_usec // 1000),
-            legend='top_right',
             tools="resize,hover,save",
             width=1000, height=800)
     p._xaxis.axis_label = "Task Name"
