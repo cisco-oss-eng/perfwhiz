@@ -159,13 +159,13 @@ def show_core_runs_diffs(dfds, cap_time_usec, task_re, label, duration):
         title = 'CPU usage'
         tooltip = ("cpu", "@height%")
         ytitle = "CPU (% of 1 core)"
-        html_prefix = 'core-runtime-diff'
+        html_prefix = 'core-runtime'
     else:
         values = 'count'
         title = 'Context switch count'
         tooltip = ("Switches", "@height")
         ytitle = "Context switches"
-        html_prefix = 'core-switch-count-diff'
+        html_prefix = 'core-switch-count'
     df.reset_index(inplace=True, drop=True)
     p = Bar(df, label='task_name', values=values,
             color='color',

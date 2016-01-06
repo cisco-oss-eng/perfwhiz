@@ -153,6 +153,7 @@ def aggregate_dfs(dfds, task_re):
     df = pandas.concat(dfl)
     return df, adjust_count_ratios
 
+
 def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
 
     # a dict of adjustment ratios indexed by task name for cdicts

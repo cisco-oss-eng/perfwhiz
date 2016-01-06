@@ -106,6 +106,9 @@ def output_html(chart, chart_type, task_re):
     if ignore_task_re:
         filename += '.html'
     else:
+        if task_re.startswith('.*'):
+            # skip leading .* if present
+            task_re = task_re[2:]
         filename += '_' + task_re + '.html'
     bokeh.plotting.output_file(filename)
     print('Saved to ' + filename)
