@@ -92,7 +92,8 @@ KVM_EXIT_REASONS = [
     'VMX preemption timer expired',  # 52
     'INVVPID',
     'WBINVD',
-    'XSETBV'
+    'XSETBV',
+    'APIC_WRITE'       # 56
 ]
 
 def convert_exit_df(df, label):
@@ -162,6 +163,14 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
     df, adjust_count_ratios = aggregate_dfs(dfds, task_re)
     if df.empty:
         print 'Error: No kvm traces matching ' + task_re
+        return
+
+    highest_exit_reason = df['next_comm'].max()
+    highest_known_exit_reason = len(KVM_EXIT_REASONS) - 1
+    if highest_exit_reason > highest_known_exit_reason:
+        print 'ERROR: found a kvm exit reason code out of range %d (max=%d)' % (highest_exit_reason, highest_known_exit_reason)
+        # Hitting this pretty much means the cdict file is corrupted or
+        # contains new exit reason codes that are not known in this the exit table above
         return
 
     # the next_comm column contains the exit code

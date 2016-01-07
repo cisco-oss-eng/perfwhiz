@@ -80,7 +80,7 @@ def trace_begin():
         print 'Initializing plugin...'
         if plugin_init():
             from mkcdict_plugin import plugin_convert_name
-    except ImportError:
+    except (ImportError, ValueError, Exception):
         plugin_convert_name = None
 
 def trace_end():
