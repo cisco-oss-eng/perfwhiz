@@ -20,7 +20,6 @@
 
 from collections import OrderedDict
 import pandas
-from pandas import Series
 
 from bokeh.models.sources import ColumnDataSource
 from bokeh.models import HoverTool
@@ -32,73 +31,82 @@ from bokeh.models.widgets import NumberFormatter
 from bokeh.models.widgets import StringFormatter
 
 from perfmap_common import output_html
+import itertools
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Use the matplotlib pastel1 palette for exit codes that do not have an assigned color
+default_palette = plt.cm.Pastel1(np.linspace(0,1,10))
+default_color_palette = itertools.cycle(default_palette)
 
 # KVM exit reasons
 # Intel64 and IA32 Architecture Software Developer's Manual Vol 3B, System Programming Guide Part 2
 # Appendix I
-KVM_EXIT_REASONS = [
-    'Exception or NMI',     # 0
-    'External Interrupt',
-    'Triple Fault',
-    'INIT',
-    'Startup IPI',
-    'I/O SMI (System Management Interrupt)',
-    'Other SMI',
-    'Interrupt Window',
-    'NMI window',
-    'Task Switch',
-    'CPUID',                # 10
-    'GETSEC',
-    'HLT',                  # 12
-    'INVD',
-    'INVLPG',
-    'RDPMC',
-    'RDTSC',
-    'RSM',
-    'VMCALL',
-    'VMCLEAR',
-    'VMLAUNCH',             # 20
-    'VMPTRLD',
-    'VMPTRST',
-    'VMREAD',
-    'VMRESUME',
-    'VMWRITE',
-    'VMXOFF',
-    'VMXON',
-    'Control Register Access',
-    'MOV DR',
-    'I/O Instruction',      # 30
-    'RDMSR',
-    'WRMSR',
-    'VM Entry Failure (invalid guest state)',
-    'VM Entry Failure (MSR loading)',
-    'n/a 35',
-    'MWAIT',
-    'Monitor trap flag',
-    'n/a 38',
-    'MONITOR',
-    'PAUSE',                # 40
-    'VM Entry Failure (machine check)',
-    'n/a 42',
-    'TPR below threshold',
-    'APIC Access',
-    'n/a 45',
-    'Access to GDTR or IDTR',
-    'Access to LDTR or TR',
-    'EPT violation',
-    'EPT misconfiguration',
-    'INVEPT',               # 50
-    'RDTSCP',
-    'VMX preemption timer expired',  # 52
-    'INVVPID',
-    'WBINVD',
-    'XSETBV',
-    'APIC_WRITE'       # 56
-]
+# The key is the numeric exit reason value
+# The value is a list containing the exit reason clear text and an assigned color
+KVM_EXIT_REASONS = {
+    0: ['Exception or NMI'],
+    1: ['External Interrupt'],
+    2: ['Triple Fault'],
+    3: ['INIT'],
+    4: ['Startup IPI'],
+    5: ['I/O SMI (System Mgmt Interrupt)'],
+    6: ['Other SMI'],
+    7: ['Interrupt Window'],
+    8: ['NMI window'],
+    9: ['Task Switch'],
+    10:['CPUID'],
+    11: ['GETSEC'],
+    12: ['HLT', '#ffffff'],     # white
+    13: ['INVD'],
+    14: ['INVLPG'],
+    15: ['RDPMC'],
+    16: ['RDTSC'],
+    17: ['RSM'],
+    18: ['VMCALL'],
+    19: ['VMCLEAR'],
+    20: ['VMLAUNCH'],
+    21: ['VMPTRLD'],
+    22: ['VMPTRST'],
+    23: ['VMREAD'],
+    24: ['VMRESUME'],
+    25: ['VMWRITE'],
+    26: ['VMXOFF'],
+    27: ['VMXON'],
+    28: ['CR Access'],
+    29: ['MOV DR'],
+    30: ['I/O Instruction'],
+    31: ['RDMSR'],
+    32: ['WRMSR'],
+    33: ['VM Entry Failure (invalid guest state)'],
+    34: ['VM Entry Failure (MSR loading)'],
+    35: ['n/a 35'],
+    36: ['MWAIT'],
+    37: ['Monitor trap flag'],
+    38: ['n/a 38'],
+    39: ['MONITOR'],
+    40: ['PAUSE'],
+    41: ['VM Entry Failure (machine check)'],
+    42: ['n/a 42'],
+    43: ['TPR below threshold'],
+    44: ['APIC Access'],
+    45: ['n/a 45'],
+    46: ['Access to GDTR or IDTR'],
+    47: ['Access to LDTR or TR'],
+    48: ['EPT violation'],
+    49: ['EPT misconfiguration'],
+    50: ['INVEPT'],
+    51: ['RDTSCP'],
+    52: ['VMX preemption timer expired'],
+    53: ['INVVPID'],
+    54: ['WBINVD'],
+    55: ['XSETBV'],
+    56: ['APIC_WRITE']
+}
 
 def convert_exit_df(df, label):
     # fill in the error reason text from the code in
-    df.next_comm = df.next_comm.apply(lambda x: '(%02d) %s' % (x, KVM_EXIT_REASONS[x]))
+    df.next_comm = df.next_comm.apply(lambda x: '(%02d) %s' % (x, KVM_EXIT_REASONS[x][0]))
     series_percent = df.next_comm.value_counts(normalize=True)
     series_count = df.next_comm.value_counts()
     series_percent = pandas.Series(["{0:.2f}%".format(val * 100) for val in series_percent],
@@ -154,6 +162,15 @@ def aggregate_dfs(dfds, task_re):
     df = pandas.concat(dfl)
     return df, adjust_count_ratios
 
+def get_exit_color(code):
+    exit_desc = KVM_EXIT_REASONS[code]
+    try:
+        color = exit_desc[1]
+    except IndexError:
+        # unassigned color, assign one at runtime from a default color palette map
+        color = next(default_color_palette)
+        exit_desc.append(color)
+    return color
 
 def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
 
@@ -165,18 +182,16 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
         print 'Error: No kvm traces matching ' + task_re
         return
 
-    highest_exit_reason = df['next_comm'].max()
-    highest_known_exit_reason = len(KVM_EXIT_REASONS) - 1
-    if highest_exit_reason > highest_known_exit_reason:
-        print 'ERROR: found a kvm exit reason code out of range %d (max=%d)' % (highest_exit_reason, highest_known_exit_reason)
-        # Hitting this pretty much means the cdict file is corrupted or
-        # contains new exit reason codes that are not known in this the exit table above
+    # the next_comm column contains the exit reason numeric code
+    # set the text description and color column based on the exit code
+    try:
+        df['exit_reason'] = df.next_comm.apply(lambda x: KVM_EXIT_REASONS[x][0])
+        # df['color'] = df.next_comm.apply(get_exit_color)
+    except KeyError:
+        # one of the next_comm row has an un-mapped exit reason code
+        # bacause our map key range is contiguous, it must be a value out of range
+        print 'Error: KVM exit reason %d unknown' % (df['next_comm'].max())
         return
-
-    # the next_comm column contains the exit code
-    exit_codes = Series(KVM_EXIT_REASONS)
-    # add  new column containing the exit reason in clear text
-    df['exit_reason'] = df['next_comm'].map(exit_codes)
 
     df.drop(['cpu', 'duration', 'event', 'next_pid', 'pid', 'next_comm', 'usecs'], inplace=True, axis=1)
 
