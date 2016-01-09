@@ -155,6 +155,10 @@ def capture(opts, run_name):
                 os.rename('perf.cdict', cdict_filename)
                 os.chmod(cdict_filename, 0664)
                 print 'Created file: ' + cdict_filename
+                # remap the task names if a mapping file was provided
+                if opts.map:
+                    perf_dict = perf_formatter.open_cdict(cdict_filename, opts.map)
+                    perf_formatter.write_cdict(cdict_filename, perf_dict)
         except OSError:
             print 'Error: perf does not seems to be installed'
 
@@ -239,7 +243,7 @@ def main():
     if not opts.dest_folder.endswith('/'):
         opts.dest_folder += '/'
 
-    # chek the map file is valid if provided
+    # check the map file is valid if provided
     if opts.map:
         if not os.path.exists(opts.map):
             print 'ERROR: Invalid mapping file: ' + opts.map
