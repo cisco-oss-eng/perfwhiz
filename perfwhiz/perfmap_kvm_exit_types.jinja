@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" rel="stylesheet" type="text/css" />
+<link href="https://maxcdn.bootstrapcdn.com/bootswatch/3.3.6/lumen/bootstrap.min.css" rel="stylesheet" type="text/css" />
+<link href="https://cdn.datatables.net/1.10.10/css/jquery.dataTables.min.css" rel="stylesheet" type="text/css" />
+<script src="https://code.jquery.com/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+<script src="https://cdn.datatables.net/1.10.10/js/jquery.dataTables.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.6/d3.min.js"></script>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>perfwhiz {{info.label}}</title>
+<style type="text/css">
+body {
+  font: 12px sans-serif;
+}
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+.bar {
+  fill: steelblue;
+}
+.y.axis path {
+  display: none;
+}
+div.tooltip {
+    position: absolute;
+    border: 0px;
+    width: 180px;
+    pointer-events: none;
+}
+td {
+  text-align: right;
+}
+th {
+  text-align: right;
+}
+.legend {
+  font-size: 12px;
+}
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-default">
+  <div class="container-fluid">
+  <h1>KVM Exit count by type   <small>{{info.label}} ({{info.window}} msec window)</small></h1>
+  </div>
+</nav>
+<div class="container-fluid" id="chart">
+<svg></svg>
+</div>
+<div class="container-fluid">
+  <table id="table" class="table display compact table-bordered" cellspacing="50" width="100%"></table>
+</div>
+<br><br>
+<div class="container-fluid">
+  <small>
+    Crafted on {{info.date}} by <a href="https://github.com/cisco-oss-eng/perfwhiz">perfwhiz</a> {{info.version}}
+  </small>
+</div>
+
+<script>
+//  "EPT": "#d0743c",
+var colormap = {
+{% for colormap in colormap_list %}
+  "{{colormap.exit}}":"{{colormap.code}}"{% if not loop.last %},{% endif %}
+{% endfor %}
+};
+
+//    {vnf:"CSR", "EPT":180, "APIC":600},
+var data = [
+{% for vnf in vnf_list %}
+    {vnf:"{{vnf.name}}",{% for vnf_exit in vnf.exit_list %}"{{vnf_exit.name}}":{{vnf_exit.count}}{% if not loop.last %},{% endif %}{% endfor %}}{% if not loop.last %},{% endif %}
+{% endfor %}];
+
+var total_width = 1000;
+// Generic code below
+
+// allow height of the chart to be a function of the number of horizontal bars
+var total_height = 40 + data.length * 40;
+total_height = Math.max(220, total_height);
+total_height = Math.min(800, total_height);
+
+// approximate left margin required based on longest vnf name
+vnf_max_len = 0;
+data.forEach(function(element, index, array) {
+    vnf_max_len = Math.max(vnf_max_len, element['vnf'].length);
+});
+vnf_max_px = vnf_max_len * 7 + 10;
+var margin = {top: 10, right: 20, bottom: 40, left: vnf_max_px},
+    width = total_width - margin.left - margin.right,
+    height = total_height - margin.top - margin.bottom;
+
+var y = d3.scale.ordinal()
+    .rangeRoundBands([height, 0], 0.1);
+
+var x = d3.scale.linear()
+    .rangeRound([0, width]);
+
+var exits = Object.keys(colormap);
+
+var yAxis = d3.svg.axis()
+    .scale(y)
+    .orient("left");
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .orient("bottom")
+    .tickFormat(d3.format(".2s"));
+
+var div = d3.select("body").append("div")	
+    .attr("class", "tooltip")				
+    .style("opacity", 0);
+
+var svg = d3.select("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+  data.forEach(function(d) {
+    var y0 = 0;
+    d.exit_desc = exits
+                    .filter(function(name) {
+                       if (name in d) {
+                          return true;
+                       }
+                       return false;  // skip
+                    })
+                    .map(function(name) {
+                        return {name: name, y0: y0, y1: y0 += +d[name], vnf:d.vnf, count:+d[name]};
+                    });
+    d.total = d.exit_desc[d.exit_desc.length - 1].y1;
+  });
+
+  y.domain(data.map(function(d) { return d.vnf; }));
+  var max_x = d3.max(data, function(d) { return d.total; })
+  x.domain([0, max_x * 1.15]);
+
+  svg.append("g")
+      .attr("class", "x axis")
+      .attr("transform", "translate(0," + height + ")")
+      .call(xAxis)
+        .append("text")
+          .attr("x", width)
+          .attr("dy", "-0.2em")
+          .style("text-anchor", "end")
+          .text("Exit Count");
+
+  svg.append("g")
+      .attr("class", "y axis")
+      .call(yAxis);
+
+  var state = svg.selectAll(".state")
+      .data(data)
+    .enter().append("g")
+      .attr("class", "g")
+      .attr("transform", function(d) { return "translate(0, " + y(d.vnf) + ")"; });
+
+  state.selectAll("rect")
+      .data(function(d) { return d.exit_desc; })
+    .enter().append("rect")
+      .attr("height", y.rangeBand())
+      .attr("x", function(d) { return x(d.y0); })
+      .attr("width", function(d) { return x(d.y1) - x(d.y0); })
+      .style("fill", function(d) { return colormap[d.name]; })
+      .on("mouseover", function(d) {		
+            div.transition()		
+                .duration(200)		
+                .style("opacity", 0.9)
+                .style("width", 300);
+
+            div	.html('<ul class="list-group"><li class="list-group-item active">' +  d.vnf + '</li>' +
+                      '<li class="list-group-item">' + d.name + '<span class="badge">'+ d.count +'</span></li></ul>')
+                .style("left", (d3.event.pageX) + "px")
+                .style("top", (d3.event.pageY - 28) + "px");
+            })
+       .on("mousemove", function(d) {			
+            div	.style("left", (d3.event.pageX) + "px")		
+                .style("top", (d3.event.pageY - 28) + "px");	
+            })	
+     .on("mouseout", function(d) {		
+            div.transition()		
+                .duration(500)		
+                .style("opacity", 0);	
+        });
+
+  var legend_group = svg.append("g").attr("class", "g");
+  var legend_box = legend_group.append("rect");
+  var legend = legend_group.selectAll(".legend")
+      .data(exits)
+    .enter().append("g")
+      .attr("class", "legend")
+      .attr("transform", function(d, i) { return "translate(0," + (5 + i * 20) + ")"; });
+
+  legend.append("rect")
+      .attr("x", width - 23 + 20)
+      .attr("width", 18)
+      .attr("height", 18)
+      .style("fill", function(d, i) { return colormap[d]; });
+
+  legend.append("text")
+      .attr('class','legend')
+      .attr("x", width - 29 + 20)
+      .attr("y", 9)
+      .attr("dy", ".35em")
+      .style("text-anchor", "end")
+      .text(function(d) { return d; });
+
+  text_w = 0;
+  legend.selectAll("text")
+      .each(function() {
+          text_w = Math.max(this.getBBox().width, text_w);
+      });
+  lb_width = text_w + 30;
+  lb_x = width - lb_width - 1 + 20;
+  lb_y = 0;
+  lb_height = exits.length * 20 + 10;
+  legend_box
+      .attr("x", lb_x)
+      .attr("y", lb_y)
+      .attr("height", lb_height)
+      .attr("width", lb_width)
+      .style("stroke-width", 1)
+      .style("stroke", "#CCCCCC")
+      .style("fill-opacity", 0.7)
+      .style("fill", "#ffffff");
+
+
+  var tcolumns = exits.map(function(elem, index, array) { return {title:elem}; });
+  tcolumns.push({title:'Total'});
+  tcolumns.splice(0,0,{title:'Name'});
+  var tdata = data.map(function(elem, index, array) {
+      row = [ elem.vnf ];
+      tot = 0;
+      exits.forEach(function(ex, idx, arr) {
+          if (ex in elem) {
+               row.push(elem[ex]);
+               tot += elem[ex];
+          } else {
+               row.push(0);
+          }
+      });
+      row.push(tot);
+      return row;
+  });
+
+ $(document).ready(function() {
+    $('#table').DataTable({
+      autoWidth: true,
+      ordering: true,
+      paging: false,
+      searching: false,
+      data:tdata,
+      columns:tcolumns
+    });
+
+} );
+</script>
+
+</body>
+</html>

@@ -13,3 +13,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
+import pbr.version
+
+
+__version__ = pbr.version.VersionInfo(
+    'vmtp').version_string_with_vcs()
+

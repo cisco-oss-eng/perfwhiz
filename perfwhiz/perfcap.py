@@ -285,6 +285,7 @@ def main():
         sys.exit(1)
 
     if opts.perf:
+        global perf_binary
         perf_binary = opts.perf
         print 'Overriding perf binary with: ' + perf_binary
 

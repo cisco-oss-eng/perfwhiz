@@ -15,10 +15,9 @@
 #
 #
 # ---------------------------------------------------------
-import pandas
 import bokeh.plotting
-from bokeh.plotting import output_file
 import os
+import webbrowser
 
 # Standard title attribute for all figures
 title_style = {'title_text_font_size': '12pt',
@@ -43,6 +42,9 @@ def set_html_file(cdict_file, headless, label, output_dir):
     :return:
     '''
     global output_chart
+    global headless_mode
+
+    headless_mode = headless
 
     # the full prefix of the output file with directory pathname
     global output_file_prefix
@@ -101,7 +103,7 @@ def get_disc_size(count):
         return 8
     return 6
 
-def output_html(chart, chart_type, task_re):
+def get_output_file_name(chart_type, task_re):
     filename = output_file_prefix + '-' + chart_type
     if ignore_task_re:
         filename += '.html'
@@ -110,9 +112,23 @@ def output_html(chart, chart_type, task_re):
             # skip leading .* if present
             task_re = task_re[2:]
         filename += '_' + task_re + '.html'
+    return filename
+
+def output_html(chart, chart_type, task_re):
+    filename = get_output_file_name(chart_type, task_re)
     bokeh.plotting.output_file(filename)
     print('Saved to ' + filename)
     output_chart(chart)
+
+def output_svg_html(svg_html, chart_type, task_re):
+    filename = get_output_file_name(chart_type, task_re)
+    with open(filename, 'w') as dest:
+        dest.write(svg_html)
+        print('Saved to %s (%d Kbytes)' % (filename, len(svg_html) / 1000))
+        if not headless_mode:
+            # bring up the file in the default browser
+            url = 'file://' + os.path.abspath(filename)
+            webbrowser.open(url, new=2)
 
 def get_full_task_name(df, task):
     # if task is a number it is considered to be a pid ID
