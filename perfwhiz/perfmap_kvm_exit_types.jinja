@@ -66,17 +66,22 @@ th {
 </div>
 
 <script>
-//  "EPT": "#d0743c",
-var colormap = {
-{% for colormap in colormap_list %}
-  "{{colormap.exit}}":"{{colormap.code}}"{% if not loop.last %},{% endif %}
+var reasonmap = [
+{% for reason in exit_reason_list %}
+  "{{reason}}"{% if not loop.last %},{% endif %}
 {% endfor %}
-};
+];
+var colormap = [
+{% for color in colormap_list %}
+  "{{color}}"{% if not loop.last %},{% endif %}
+{% endfor %}
+];
 
-//    {vnf:"CSR", "EPT":180, "APIC":600},
+//    {vnf:"CSR", "exit_count":[180, 0, 600]},
 var data = [
 {% for vnf in vnf_list %}
-    {vnf:"{{vnf.name}}",{% for vnf_exit in vnf.exit_list %}"{{vnf_exit.name}}":{{vnf_exit.count}}{% if not loop.last %},{% endif %}{% endfor %}}{% if not loop.last %},{% endif %}
+{vnf:"{{vnf.name}}",counts:{{vnf.exit_count}}}{% if not loop.last %},{% endif %}
+
 {% endfor %}];
 
 var total_width = 1000;
@@ -126,16 +131,13 @@ var svg = d3.select("svg")
 
   data.forEach(function(d) {
     var y0 = 0;
-    d.exit_desc = exits
-                    .filter(function(name) {
-                       if (name in d) {
-                          return true;
-                       }
-                       return false;  // skip
-                    })
-                    .map(function(name) {
-                        return {name: name, y0: y0, y1: y0 += +d[name], vnf:d.vnf, count:+d[name]};
-                    });
+    var counts = d["counts"];
+    d.exit_desc = [];
+    counts.forEach(function(count, index, array) {
+        if (count > 0) {
+           d.exit_desc.push({name: reasonmap[index], y0: y0, y1: y0 += +count, vnf:d.vnf, count:+count, color:colormap[index]})
+        }
+    });
     d.total = d.exit_desc[d.exit_desc.length - 1].y1;
   });
 
@@ -169,7 +171,7 @@ var svg = d3.select("svg")
       .attr("height", y.rangeBand())
       .attr("x", function(d) { return x(d.y0); })
       .attr("width", function(d) { return x(d.y1) - x(d.y0); })
-      .style("fill", function(d) { return colormap[d.name]; })
+      .style("fill", function(d) { return d.color; })
       .on("mouseover", function(d) {		
             div.transition()		
                 .duration(200)		
@@ -194,7 +196,7 @@ var svg = d3.select("svg")
   var legend_group = svg.append("g").attr("class", "g");
   var legend_box = legend_group.append("rect");
   var legend = legend_group.selectAll(".legend")
-      .data(exits)
+      .data(colormap)
     .enter().append("g")
       .attr("class", "legend")
       .attr("transform", function(d, i) { return "translate(0," + (5 + i * 20) + ")"; });
@@ -203,7 +205,7 @@ var svg = d3.select("svg")
       .attr("x", width - 23 + 20)
       .attr("width", 18)
       .attr("height", 18)
-      .style("fill", function(d, i) { return colormap[d]; });
+      .style("fill", function(d, i) { return d; });
 
   legend.append("text")
       .attr('class','legend')
@@ -211,7 +213,7 @@ var svg = d3.select("svg")
       .attr("y", 9)
       .attr("dy", ".35em")
       .style("text-anchor", "end")
-      .text(function(d) { return d; });
+      .text(function(d, i) { return reasonmap[i]; });
 
   text_w = 0;
   legend.selectAll("text")
@@ -233,21 +235,11 @@ var svg = d3.select("svg")
       .style("fill", "#ffffff");
 
 
-  var tcolumns = exits.map(function(elem, index, array) { return {title:elem}; });
+  var tcolumns = reasonmap.map(function(reason, index, array) { return {title:reason}; });
   tcolumns.push({title:'Total'});
   tcolumns.splice(0,0,{title:'Name'});
   var tdata = data.map(function(elem, index, array) {
-      row = [ elem.vnf ];
-      tot = 0;
-      exits.forEach(function(ex, idx, arr) {
-          if (ex in elem) {
-               row.push(elem[ex]);
-               tot += elem[ex];
-          } else {
-               row.push(0);
-          }
-      });
-      row.push(tot);
+      row = [ elem.vnf ].concat(elem["counts"]).concat(elem["total"])
       return row;
   });
 

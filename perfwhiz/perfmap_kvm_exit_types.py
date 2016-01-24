@@ -225,15 +225,22 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
     exit_code_list = pandas.unique(df.next_comm.ravel()).tolist()
     exit_code_list.sort()
 
+    # key = exit code, value = exit index
+    exit_index_map = {}
+    # index is the exit index
+    exit_reason_list = []
     #     colormap_list = [
     #    {"exit":"EPT violation", "code":"#b2df8a"},
     #    {"exit":"VMRESUME", "code":"#b2df8a"},
     #    {"exit":"HLT", "code":"#b2df8a"}]
     colormap_list = []
+    exit_index = 0
     for exit_code in exit_code_list:
         try:
-            colormap_list.append({"exit":KVM_EXIT_REASONS[exit_code][0],
-                                  "code":get_exit_color(exit_code)})
+            exit_reason_list.append(KVM_EXIT_REASONS[exit_code][0])
+            colormap_list.append(get_exit_color(exit_code))
+            exit_index_map[exit_code] = exit_index
+            exit_index += 1
         except KeyError:
             # one of the next_comm row has an un-mapped exit reason code
             # bacause our map key range is contiguous, it must be a value out of range
@@ -251,10 +258,9 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
     #     vnf_list = [
     #    {"name":"Router", "exit_list":[{"name":"EPT violation", "count":400}, {"name":"APIC_WRITE", "count":300}]},
     #    {"name":"Firewall", "exit_list":[{"name":"VMRESUME", "count":300}, {"name":"HLT", "count":930}]}]
-
     vnf_list = []
     for task_name in task_names:
-        ec_list = []
+        exit_count_list = [0] * len(exit_reason_list)
         if adjust_count_ratios:
             try:
                 multiplier = adjust_count_ratios[task_name]
@@ -263,21 +269,15 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
         else:
             multiplier = 1
         for exit_code, count in size_series[task_name].iteritems():
-            ec_list.append({'name':KVM_EXIT_REASONS[exit_code][0],
-                            'count':int(count * multiplier)})
+            exit_index = exit_index_map[exit_code]
+            adj_count = int(count * multiplier)
+            exit_count_list[exit_index] = adj_count
+        # add the total to the count list
         vnf_list.append({'name': task_name,
-                         'exit_list': ec_list})
+                         'exit_count': str(exit_count_list)})
     # get in reverse order so we display them top to bottom on a
     # horizontal stacked bar chart
     vnf_list.reverse()
-    df = size_series.to_frame('count')
-    df.reset_index(inplace=True)
-
-    if adjust_count_ratios:
-        df['ratio'] = df['task_name'].map(adjust_count_ratios)
-        df.fillna(1.0, inplace=True)
-        df['count'] = (df['count'] * df['ratio']).astype(int)
-        df.drop(['ratio'], inplace=True, axis=1)
 
     # Other misc information in the chart
     info = {
@@ -289,5 +289,7 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
     template_loader = FileSystemLoader(searchpath=".")
     template_env = Environment(loader=template_loader,trim_blocks=True,lstrip_blocks=True)
     tpl = template_env.get_template("perfmap_kvm_exit_types.jinja")
-    svg_html = tpl.render(vnf_list=vnf_list, colormap_list=colormap_list, info=info)
+    svg_html = tpl.render(exit_reason_list=exit_reason_list,
+                          vnf_list=vnf_list,
+                          colormap_list=colormap_list, info=info)
     output_svg_html(svg_html, 'kvm-types', task_re)
