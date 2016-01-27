@@ -18,7 +18,7 @@
 # ---------------------------------------------------------
 
 import pandas
-
+from pandas import DataFrame
 from perfmap_common import output_svg_html
 import itertools
 import matplotlib.pyplot as plt
@@ -31,11 +31,11 @@ import time
 from __init__ import __version__
 
 # Use the matplotlib pastel1 palette for exit codes that do not have an assigned color
-default_palette = [colors.rgb2hex(rgb) for rgb in plt.cm.Pastel1(np.linspace(0,1,10))]
+default_palette = [colors.rgb2hex(rgb) for rgb in plt.cm.Pastel1(np.linspace(0, 1, 10))]
 default_color_palette = itertools.cycle(default_palette)
 # This palette is extracted from colorbrewer2 qualitative palette with 10 colors
-assigned_palette = ['#a6cee3','#1f78b4','#ff7f00','#33a02c','#fb9a99',
-                    '#e31a1c','#fdbf6f','#b2df8a','#cab2d6','#6a3d9a']
+assigned_palette = ['#a6cee3', '#1f78b4', '#ff7f00', '#33a02c', '#fb9a99',
+                    '#e31a1c', '#fdbf6f', '#b2df8a', '#cab2d6', '#6a3d9a']
 assigned_index = 0
 def assigned_color():
     global assigned_index
@@ -63,7 +63,7 @@ KVM_EXIT_REASONS = {
     7: ['Interrupt Window'],
     8: ['NMI window'],
     9: ['Task Switch'],
-    10:['CPUID'],
+    10: ['CPUID'],
     11: ['GETSEC'],
     12: ['HLT', assigned_color()],     #
     13: ['INVD'],
@@ -147,7 +147,7 @@ def aggregate_dfs(dfds, task_re):
         df = df[df['task_name'].str.match(task_re)]
         # add the cdict name to the task name unless there is only 1 cdict file
         if len(dfds) > 1:
-            df['task_name'] = df['task_name'].astype(str) + '-' + dfd.short_name
+            df['task_name'] = df['task_name'].astype(str) + '.' + dfd.short_name
         # check the time span
         if dfd.multiplier >= 1.01:
             print
@@ -167,7 +167,7 @@ def get_exit_color(code):
         color = exit_desc[1]
     except IndexError:
         # unassigned color, assign one at runtime from a default color palette map
-        color = next(default_color_palette)
+        color = str(next(default_color_palette))
         exit_desc.append(color)
     return color
 
@@ -210,7 +210,68 @@ def show_exit_type_count(df_all_exits, df_last_exits):
     print res
 '''
 
+
+def filter_df_core(df, task_re, remove_cpu=False):
+    # remove unneeded columns
+    df = df.drop(['next_pid', 'pid', 'usecs', 'next_comm'], axis=1)
+    if remove_cpu:
+        df = df.drop('cpu', axis=1)
+
+    # filter out all events except the switch events
+    df = df[df.event == 'sched__sched_switch']
+    df = df.drop('event', axis=1)
+    df = df[df['task_name'].str.match(task_re)]
+    return df
+
+def get_cpu_sw_map(dfds, cap_time_usec, task_re):
+    df_list = []
+    dfsw_list = []
+    for dfd in dfds:
+        df = filter_df_core(dfd.df, task_re, True)
+        # at this point we have a set of df that look like this:
+        #         task_name  duration
+        # 0     ASA.1.vcpu0      7954
+        # 1     ASA.1.vcpu0      5475
+        # 2     ASA.1.vcpu0      4151
+        if df.empty:
+            continue
+        gb = df.groupby('task_name', as_index=False)
+
+        # sum all duration for each task
+        df = gb.aggregate(np.sum)
+        if dfd.multiplier > 1.0:
+            df['duration'] = (df['duration'] * dfd.multiplier).astype(int)
+        df['percent'] = ((df['duration'] * 100 * 10) // cap_time_usec) / 10
+        df['task_name'] = df['task_name'] + '.' + dfd.short_name
+        df_list.append(df)
+
+        # count number of rows with same task and cpu
+        dfsw = DataFrame(gb.size())
+        dfsw.reset_index(inplace=True)
+        dfsw.rename(columns={0: 'count'}, inplace=True)
+        if dfd.multiplier > 1.0:
+            dfsw['count'] = (dfsw['count'] * dfd.multiplier).astype(int)
+        dfsw_list.append(dfsw)
+
+    df = pandas.concat(df_list)
+    df = df.drop('duration', axis=1)
+    dfsw = pandas.concat(dfsw_list)
+    df = pandas.merge(df, dfsw, on='task_name')
+    # Result:
+    #             task_name  percent  count
+    # 0  ASA.01.vcpu0.1x218     72.0  1998
+    # 1  ASA.01.vcpu0.2x208     61.8  2128
+    # 2  ASA.02.vcpu0.2x208     58.9  2177
+
+    # transform this into a dict where the key is the task_name and the value
+    # is a list [percent, count]
+    return df.set_index('task_name').T.to_dict('list')
+
 def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
+
+    # calculate the total cpu and total context switches per task
+
+    cpu_sw_map = get_cpu_sw_map(dfds, cap_time_usec, task_re)
 
     # a dict of adjustment ratios indexed by task name for cdicts
     # that require count adjustment due to
@@ -219,7 +280,8 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
     if df.empty:
         print 'Error: No kvm traces matching ' + task_re
         return
-    df.drop(['cpu', 'duration', 'event', 'next_pid', 'pid',  'usecs'], inplace=True, axis=1)
+
+    df.drop(['cpu', 'duration', 'event', 'next_pid', 'pid', 'usecs'], inplace=True, axis=1)
 
     # Get the list of exit reason codes, sorted numerically
     exit_code_list = pandas.unique(df.next_comm.ravel()).tolist()
@@ -252,6 +314,7 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
     # number of exit types in each group
     # result is a series with 2-level index (task_name, next_comm)
     size_series = gb.size()
+
     # Get the list of all level 0 indices
     task_names = size_series.index.levels[0]
 
@@ -273,23 +336,31 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
             adj_count = int(count * multiplier)
             exit_count_list[exit_index] = adj_count
         # add the total to the count list
+        try:
+            cpu, sw = cpu_sw_map[task_name]
+        except KeyError:
+            # this task has no context switch no cpu, so likely is
+            # using up all the cpu
+            cpu = 100
+            sw = 1
         vnf_list.append({'name': task_name,
-                         'exit_count': str(exit_count_list)})
+                         'exit_count': str(exit_count_list),
+                         'cpu': round(cpu, 1),
+                         'sw': sw})
     # get in reverse order so we display them top to bottom on a
     # horizontal stacked bar chart
     vnf_list.reverse()
-
     # Other misc information in the chart
     info = {
         "label": label,
         "window": "{:,d}".format(cap_time_usec / 1000),
-        "date": time.strftime("%d-%b-%Y"), # 01-Jan-2016 format
+        "date": time.strftime("%d-%b-%Y"),    # 01-Jan-2016 format
         "version": __version__
     }
     template_loader = FileSystemLoader(searchpath=".")
-    template_env = Environment(loader=template_loader,trim_blocks=True,lstrip_blocks=True)
+    template_env = Environment(loader=template_loader, trim_blocks=True, lstrip_blocks=True)
     tpl = template_env.get_template("perfmap_kvm_exit_types.jinja")
-    svg_html = tpl.render(exit_reason_list=exit_reason_list,
+    svg_html = tpl.render(exit_reason_list=str(exit_reason_list),
                           vnf_list=vnf_list,
-                          colormap_list=colormap_list, info=info)
+                          colormap_list=str(colormap_list), info=info)
     output_svg_html(svg_html, 'kvm-types', task_re)
