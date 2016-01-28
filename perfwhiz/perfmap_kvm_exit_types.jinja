@@ -27,9 +27,6 @@ body {
 .bar {
   fill: steelblue;
 }
-.y.axis path {
-  display: none;
-}
 div.tooltip {
     position: absolute;
     border: 0px;
@@ -78,14 +75,16 @@ th {
     <h1><span class="glyphicon glyphicon-{[current_mode.icon]}" aria-hidden="true"></span> {[current_mode.title]}   <small>{{info.label}} ({{info.window}} msec window)</small></h1>
 </div>
 <div class="container-fluid" ng-show="current_index == 0">
-
     <svg id="svg-cpu"></svg>
 </div>
 <div class="container-fluid" ng-show="current_index == 1">
   <svg id="svg-kvm-exits"></svg>
+  <br>
   <table id="table" class="table display compact table-bordered" cellspacing="50" width="100%"></table>
 </div>
-
+<div class="container-fluid" ng-show="current_index == 2">
+    <svg id="svg-coremap"></svg>
+</div>
 <br><br>
 <div class="container-fluid">
   <small>
@@ -97,25 +96,36 @@ th {
 
 var reasonmap = {{exit_reason_list}};
 var colormap = {{colormap_list}};
-var vnf_data = [{% for vnf in vnf_list %}
-{vnf:"{{vnf.name}}",counts:{{vnf.exit_count}}, cpu:{{vnf.cpu}}, sw:{{vnf.sw}}}{% if not loop.last %},{% endif %}
+var task_data = [{% for task in task_list %}
+{task:"{{task.name}}",counts:{{task.exit_count}}, cpu:{{task.cpu}}, sw:{{task.sw}}}{% if not loop.last %},{% endif %}
+{% endfor %}];
+// [ { run:"run1", coremap: [ { task:"vnf1", counts:[[1,10,21], [4,21,45]]},
+//                            { task:"vnf2", counts:[[31,45,12]]} ]
+//   },
+// ]
+var coremaps = [{% for item in coremaps %}
+{run:"{{item.run}}",stats: [
+{% for coremap in item.coremap %}
+{task:"{{coremap.task}}", counts:{{coremap.counts}}}{% if not loop.last %},{% endif %}
+{% endfor %}]}
+{% if not loop.last %},{% endif %}
 {% endfor %}];
 
-var total_width = 1000;
+var total_width = 1100;
 // Generic code below
 
 // allow height of the chart to be a function of the number of horizontal bars
-var total_height = 40 + vnf_data.length * 40;
+var total_height = 40 + task_data.length * 40;
 total_height = Math.max(220, total_height);
 total_height = Math.min(800, total_height);
 
-// approximate left margin required based on longest vnf name
-vnf_max_len = 0;
-vnf_data.forEach(function(element, index, array) {
-    vnf_max_len = Math.max(vnf_max_len, element['vnf'].length);
+// approximate left margin required based on longest task name
+task_max_len = 0;
+task_data.forEach(function(element, index, array) {
+    task_max_len = Math.max(task_max_len, element['task'].length);
 });
-vnf_max_px = vnf_max_len * 7 + 10;
-var margin = {top: 30, right: 20, bottom: 40, left: vnf_max_px},
+task_max_px = task_max_len * 7 + 10;
+var margin = {top: 30, right: 20, bottom: 40, left: task_max_px},
     width = total_width - margin.left - margin.right,
     height = total_height - margin.top - margin.bottom;
 
@@ -148,7 +158,7 @@ function get_legend_text_width() {
     return max_width;
 }
 
-function draw_kvm_exits() {
+function draw_kvm_exits(scope) {
     var exits = Object.keys(colormap);
     var x = d3.scale.linear()
         .rangeRound([0, width]);
@@ -162,20 +172,20 @@ function draw_kvm_exits() {
                 .append("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-    vnf_data.forEach(function(d) {
+    task_data.forEach(function(d) {
         var y0 = 0;
         var counts = d["counts"];
         d.exit_desc = [];
         counts.forEach(function(count, index, array) {
             if (count > 0) {
-               d.exit_desc.push({name: reasonmap[index], y0: y0, y1: y0 += +count, vnf:d.vnf, count:+count, color:colormap[index]})
+               d.exit_desc.push({name: reasonmap[index], y0: y0, y1: y0 += +count, task:d.task, count:+count, color:colormap[index]})
             }
         });
         d.total = d.exit_desc[d.exit_desc.length - 1].y1;
     });
 
-    y.domain(vnf_data.map(function(d) { return d.vnf; }));
-    var max_x = d3.max(vnf_data, function(d) { return d.total; })
+    y.domain(task_data.map(function(d) { return d.task; }));
+    var max_x = d3.max(task_data, function(d) { return d.total; })
     x.domain([0, max_x * 1.15]);
 
     svg.append("g")
@@ -193,10 +203,10 @@ function draw_kvm_exits() {
         .call(yAxis);
 
     var state = svg.selectAll(".state")
-        .data(vnf_data)
+        .data(task_data)
         .enter().append("g")
         .attr("class", "g")
-        .attr("transform", function(d) { return "translate(0, " + y(d.vnf) + ")"; });
+        .attr("transform", function(d) { return "translate(0, " + y(d.task) + ")"; });
 
     state.selectAll("rect")
       .data(function(d) { return d.exit_desc; })
@@ -213,7 +223,7 @@ function draw_kvm_exits() {
             var matrix = this.getScreenCTM()
                 .translate(+this.getAttribute("cx"),
                            +this.getAttribute("cy"));
-            div	.html('<ul class="list-group"><li class="list-group-item"><b>' +  d.vnf + '</b><br>' +
+            div	.html('<ul class="list-group"><li class="list-group-item"><b>' +  d.task + '</b><br>' +
                       d.name + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d.count +'</span></li></ul>')
                 .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 30) + "px")
                 .style("left", (d3.event.pageX) + "px");
@@ -269,8 +279,8 @@ function draw_kvm_exits() {
     var tcolumns = reasonmap.map(function(reason, index, array) { return {title:reason}; });
     tcolumns.push({title:'Total'});
     tcolumns.splice(0,0,{title:'Name'});
-    var tdata = vnf_data.map(function(elem, index, array) {
-      row = [ elem.vnf ].concat(elem["counts"]).concat(elem["total"])
+    var tdata = task_data.map(function(elem, index, array) {
+      row = [ elem.task ].concat(elem["counts"]).concat(elem["total"])
       return row;
     });
 
@@ -287,7 +297,7 @@ function draw_kvm_exits() {
 }
 
 // ----- CPU Usage and Context Switches
-function draw_cpusw() {
+function draw_cpusw(scope) {
     var xcpu = d3.scale.linear()
         .rangeRound([0, width - 120]);
     var xsw = d3.scale.linear()
@@ -307,8 +317,8 @@ function draw_cpusw() {
                 .append("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-    y.domain(vnf_data.map(function(d) { return d.vnf; }));
-    var max_sw = d3.max(vnf_data, function(d) { return d.sw; })
+    y.domain(task_data.map(function(d) { return d.task; }));
+    var max_sw = d3.max(task_data, function(d) { return d.sw; })
     var round_unit = Math.pow(10, Math.round(Math.log10(max_sw)))
     max_sw = Math.max(10, Math.ceil(max_sw/round_unit)*round_unit);
     xcpu.domain([0, 1]);
@@ -353,10 +363,10 @@ function draw_cpusw() {
         .call(yAxis);
 
     var state = svg.selectAll(".g")
-        .data(vnf_data)
+        .data(task_data)
         .enter().append("g")
         .attr("class", "g")
-        .attr("transform", function(d) { return "translate(0, " + y(d.vnf) + ")"; });
+        .attr("transform", function(d) { return "translate(0, " + y(d.task) + ")"; });
     state
         .append("rect")
         .attr("height", y.rangeBand())
@@ -371,7 +381,7 @@ function draw_cpusw() {
             var matrix = this.getScreenCTM()
                 .translate(+this.getAttribute("cx"),
                            +this.getAttribute("cy"));
-            div	.html('<ul class="list-group"><li class="list-group-item"><b>' +  d.vnf + '</b><br>one core usage&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d.cpu + '%</span></li>')
+            div	.html('<ul class="list-group"><li class="list-group-item"><b>' +  d.task + '</b><br>one core usage&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d.cpu + '%</span></li>')
                 .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 40) + "px")
                 .style("left", (d3.event.pageX) + "px");
             d3.select(this).style("opacity", 1);
@@ -407,7 +417,7 @@ function draw_cpusw() {
             var matrix = this.getScreenCTM()
                 .translate(+this.getAttribute("cx"),
                            +this.getAttribute("cy"));
-            div	.html('<ul class="list-group"><li class="list-group-item"><b>' +  d.vnf + '</b><br>context switches &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d.sw + '</span></li>')
+            div	.html('<ul class="list-group"><li class="list-group-item"><b>' +  d.task + '</b><br>context switches &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d.sw + '</span></li>')
                 .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 50) + "px")
                 .style("left", (d3.event.pageX) + "px");
         })
@@ -419,8 +429,76 @@ function draw_cpusw() {
         });
 }
 
+function draw_line(svg, x1, y1, x2, y2, color) {
+    svg.append("line")
+        .attr("x1", x1)
+        .attr("y1", y1)
+        .attr("x2", x2)
+        .attr("y2", y2)
+        .attr("stroke-width", 1)
+        .attr("stroke", color);
+}
+function draw_vert_line(svg, x, y1, y2, color) {
+    draw_line(svg, x, y1, x, y2, color);
+}
 // ----- Coremap
-function draw_coremap() {
+function draw_coremap(scope) {
+    var coremap = coremaps[scope.coremap_index];
+    var max_cores = 32;
+    var x = d3.scale.ordinal()
+        .rangeBands([0, width], 0.01, 0.01);
+    var xAxis = d3.svg.axis()
+        .scale(x)
+        .orient("bottom");
+    // shadowing the global variables as the height and width is special for coremaps
+    var margin = {top: 30, right: task_max_px, bottom: 40, left: task_max_px};
+    var task_list = coremap.stats.map(function(d) { return d.task; });
+    var total_height = 40 + task_list.length * 20 + margin.top + margin.bottom;
+    var height = total_height - margin.top - margin.bottom;
+    var y = d3.scale.ordinal()
+        .rangeBands([height, 0], 0.01, 0.01);
+    var yAxis = d3.svg.axis()
+        .scale(y)
+        .orient("left");
+    var svg = d3.select("#svg-coremap")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", total_height)
+                .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+    var xrange = d3.range(max_cores);
+    xrange.push('0-31');
+    y.domain(task_list);
+    x.domain(xrange);
+    var cpu_color = colormap[0];
+    var sw_color = colormap[7];
+    var axis = svg.append("g")
+        .attr("class", "x axis")
+        .attr("transform", "translate(0," + height + ")")
+        .call(xAxis);
+    svg.append("g")
+        .attr("class", "y axis")
+        .call(yAxis);
+    var xAxis2 = d3.svg.axis()
+        .scale(x)
+        .orient("top");
+    svg.append("g")
+        .attr("class", "x axis")
+        .call(xAxis2)
+    var yAxis2 = d3.svg.axis()
+        .scale(y)
+        .orient("right");
+    var axis = svg.append("g")
+        .attr("class", "y axis")
+        .attr("transform", "translate(" + (width) + ",0)")
+        .call(yAxis2);
+    // delimitate total column/row and socket boundary
+    var yt = y(task_list[ task_list.length - 2]);
+    var tot_color = "#888888"
+    draw_line(svg, 0, yt, width, yt, tot_color);
+    draw_vert_line(svg, x(xrange[xrange.length - 1]), 0, height, tot_color);
+    [8,16,24].forEach(function (sb) { draw_vert_line(svg, x(sb), 0, height, "#bbbbbb"); });
+    // build all the core pods for each task
+
 }
 
 var app = angular.module('pw', []);
@@ -439,12 +517,13 @@ app.controller('PwCtrl', PwCtrl);
 function PwCtrl($scope) {
     $scope.current_index = 0
     $scope.modes = modes;
+    $scope.coremap_index = 0;
     $scope.handleEvent = function(event, index) {
         $scope.current_index = index;
         $scope.current_mode = $scope.modes[index];
         var initf = $scope.current_mode['init'];
         if (initf != null) {
-            initf();
+            initf($scope);
             $scope.current_mode['init'] = null;
         }
     };

@@ -267,11 +267,33 @@ def get_cpu_sw_map(dfds, cap_time_usec, task_re):
     # is a list [percent, count]
     return df.set_index('task_name').T.to_dict('list')
 
+# [ { run:"run1", stats: [ { task:"vnf1", counts:[[1,10.5,231], [4,21.8,415]]},
+#                          { task:"vnf2", counts:[[31,45.1,152]]} ]
+#   },
+# ]
+def get_coremaps(dfds, cap_time_usec, task_re):
+    coremaps =  [
+        { "run":"run1", "coremap": [
+                                     { "task":"vnf1", "counts":[[1,10.5,231], [4,21.8,415]]},
+                                     { "task":"vnf2", "counts":[[31,45.1,152]]},
+            { "task":"all tasks/core", "counts":[[1,10.5,231], [4,21.8,415],[31,45.1,152]]}
+                                      ]
+        },
+        { "run":"run2", "coremap": [
+                                     { "task":"vnf1", "counts":[[4,40.5,51], [7,0.8,215]]},
+                                     { "task":"vnf2", "counts":[[30,35.1,62]]},
+            { "task":"all tasks/core", "counts":[[4,40.5,51], [7,0.8,215],[30,35.1,62]]}
+                                      ]
+        }
+    ]
+    return coremaps
+
 def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
 
     # calculate the total cpu and total context switches per task
-
     cpu_sw_map = get_cpu_sw_map(dfds, cap_time_usec, task_re)
+
+    coremaps = get_coremaps(dfds, cap_time_usec, task_re)
 
     # a dict of adjustment ratios indexed by task name for cdicts
     # that require count adjustment due to
@@ -318,10 +340,10 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
     # Get the list of all level 0 indices
     task_names = size_series.index.levels[0]
 
-    #     vnf_list = [
+    #     task_list = [
     #    {"name":"Router", "exit_list":[{"name":"EPT violation", "count":400}, {"name":"APIC_WRITE", "count":300}]},
     #    {"name":"Firewall", "exit_list":[{"name":"VMRESUME", "count":300}, {"name":"HLT", "count":930}]}]
-    vnf_list = []
+    task_list = []
     for task_name in task_names:
         exit_count_list = [0] * len(exit_reason_list)
         if adjust_count_ratios:
@@ -343,13 +365,14 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
             # using up all the cpu
             cpu = 100
             sw = 1
-        vnf_list.append({'name': task_name,
+        task_list.append({'name': task_name,
                          'exit_count': str(exit_count_list),
                          'cpu': round(cpu, 1),
                          'sw': sw})
+
     # get in reverse order so we display them top to bottom on a
     # horizontal stacked bar chart
-    vnf_list.reverse()
+    task_list.reverse()
     # Other misc information in the chart
     info = {
         "label": label,
@@ -361,6 +384,8 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
     template_env = Environment(loader=template_loader, trim_blocks=True, lstrip_blocks=True)
     tpl = template_env.get_template("perfmap_kvm_exit_types.jinja")
     svg_html = tpl.render(exit_reason_list=str(exit_reason_list),
-                          vnf_list=vnf_list,
-                          colormap_list=str(colormap_list), info=info)
+                          task_list=task_list,
+                          colormap_list=str(colormap_list),
+                          coremaps=coremaps,
+                          info=info)
     output_svg_html(svg_html, 'kvm-types', task_re)
