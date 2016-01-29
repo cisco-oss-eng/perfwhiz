@@ -100,11 +100,11 @@ var task_data = [{% for task in task_list %}
 {task:"{{task.name}}",counts:{{task.exit_count}}, cpu:{{task.cpu}}, sw:{{task.sw}}}{% if not loop.last %},{% endif %}
 {% endfor %}];
 // [ { run:"run1", stats: [ { task:"vnf1", counts:[[1,10,21], [4,21,45]]},
-//                            { task:"vnf2", counts:[[31,45,12]]} ]
+//                            { task:"vnf2", counts:[[31,45,12]]} ], extent: [12, 45]
 //   },
 // ]
 var coremaps = [{% for item in coremaps %}
-{run:"{{item.run}}",stats: [
+{run:"{{item.run}}", extent:{{item.extent}}, stats: [
 {% for coremap in item.coremap %}
 {task:"{{coremap.task}}", counts:{{coremap.counts}}}{% if not loop.last %},{% endif %}
 {% endfor %}]}
@@ -124,7 +124,7 @@ task_max_len = 0;
 task_data.forEach(function(element, index, array) {
     task_max_len = Math.max(task_max_len, element['task'].length);
 });
-task_max_px = task_max_len * 7 + 10;
+task_max_px = task_max_len * 7 + 5;
 var margin = {top: 30, right: 20, bottom: 40, left: task_max_px},
     width = total_width - margin.left - margin.right,
     height = total_height - margin.top - margin.bottom;
@@ -445,6 +445,9 @@ function draw_line(svg, x1, y1, x2, y2, color) {
 function draw_vert_line(svg, x, y1, y2, color) {
     draw_line(svg, x, y1, x, y2, color);
 }
+function draw_hor_line(svg, x1, x2, y, color) {
+    draw_line(svg, x1, y, x2, y, color);
+}
 // ----- Coremap
 function draw_coremap(scope) {
     var coremap = coremaps[scope.coremap_index];
@@ -473,7 +476,6 @@ function draw_coremap(scope) {
     xrange.push('0-31');
     y.domain(task_list);
     x.domain(xrange);
-    var cpu_color = colormap[0];
     var sw_color = colormap[7];
     var axis = svg.append("g")
         .attr("class", "x axis")
@@ -495,56 +497,69 @@ function draw_coremap(scope) {
         .attr("class", "y axis")
         .attr("transform", "translate(" + (width) + ",0)")
         .call(yAxis2);
-    // delimitate total column/row and socket boundary
-    var yt = y(task_list[ task_list.length - 2]);
-    var tot_color = "#888888"
-    draw_line(svg, 0, yt, width, yt, tot_color);
-    draw_vert_line(svg, x(xrange[xrange.length - 1]), 0, height, tot_color);
+    // delimitate total and socket boundary
+    draw_vert_line(svg, x(xrange[xrange.length - 1]), 0, height, '#888888');
     [8,16,24].forEach(function (sb) { draw_vert_line(svg, x(sb), 0, height, "#bbbbbb"); });
     // build all the core pods for each task
     var blues = d3.scale.linear()
         .domain([0, 50, 100])
         .range(['#deebf7','#9ecae1','#3182bd']);
     var oranges = d3.scale.linear()
-        .domain([0, 50, 100])
-        .range(['#fee6ce','#fdae6b','#e6550d']);
-    var state = svg.selectAll(".g")
-        .data(coremap.stats)
-        .enter().append("g")
-        .attr("class", "g")
-        .attr("transform", function(d) { return "translate(0, " + (y(d.task) + 1) + ")"; });
-    state.selectAll("rect")
-      .data(function(d) { return d.counts; })
-    .enter().append("rect")
-        .attr("height", y.rangeBand() - 2)
-        .attr("x", function(d) { return x(d[0]); })
-        .attr("width", x.rangeBand() - 2)
-        .style("opacity", 0.8)
-        .style("fill", function(d) { return blues(d[1]); })
-        .on("mouseover", function(d, i) {
-            div.transition()
-                .duration(200)
-                .style("opacity", 0.9);
-            var matrix = this.getScreenCTM()
-                .translate(+this.getAttribute("cx"),
-                           +this.getAttribute("cy"));
-            var task = this.parentNode.__data__.task;
-            div	.html('<ul class="list-group"><li class="list-group-item active">' + task + ' on core ' + d[0] + '</li>' +
-                      '<li class="list-group-item">core usage&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d[1] +'%</span></li>' +
-                      '<li class="list-group-item">ctx switches&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d[2] +'</span></li></ul>')
-                .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 30) + "px")
-                .style("left", (d3.event.pageX) + "px");
-            d3.select(this).style("opacity", 1);
-        })
-        .on("mousemove", function(d) {
-            div	.style("left", (d3.event.pageX) + "px");
-        })
-        .on("mouseout", function(d) {
-            div.transition()
-                .duration(500)
-                .style("opacity", 0);
-            d3.select(this).style("opacity", 0.8);
-        });
+        .domain(coremap.extent)
+        .range(['#fee6ce','#e6550d']);
+    function draw_half_rect(id, colormap, y_offset) {
+        var state = svg.selectAll("#" + id)
+            .data(coremap.stats)
+            .enter().append("g")
+            .attr("class", "g")
+            .attr("id", id)
+            .attr("transform", function(d) { return "translate(0, " + (y(d.task) + 1 + y_offset) + ")"; });
+        state.selectAll("rect")
+          .data(function(d) { return d.counts; })
+        .enter().append("rect")
+            .attr("height", (y.rangeBand() - 2)/2)
+            .attr("x", function(d) { return x(d[0]); })
+            .attr("width", x.rangeBand() - 2)
+            .style("opacity", 0.8)
+            .style("fill", colormap)
+            .on("mouseover", function(d, i) {
+                div.transition()
+                    .duration(200)
+                    .style("opacity", 0.9);
+                var matrix = this.getScreenCTM()
+                    .translate(+this.getAttribute("cx"),
+                               +this.getAttribute("cy"));
+                var task = this.parentNode.__data__.task;
+                div	.html('<ul class="list-group"><li class="list-group-item active">' + task + ' on core ' + d[0] + '</li>' +
+                          '<li class="list-group-item">core usage&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d[1] +'%</span></li>' +
+                          '<li class="list-group-item">ctx switches&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d[2] +'</span></li></ul>')
+                    .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 30) + "px")
+                    .style("left", (d3.event.pageX) + "px");
+                d3.select(this).style("opacity", 1);
+            })
+            .on("mousemove", function(d) {
+                div	.style("left", (d3.event.pageX) + "px");
+            })
+            .on("mouseout", function(d) {
+                div.transition()
+                    .duration(500)
+                    .style("opacity", 0);
+                d3.select(this).style("opacity", 0.8);
+            });
+    }
+    draw_half_rect('cpu', function(d) {return blues(d[1]);}, 0);
+    draw_half_rect('sw', function(d) {return oranges(d[2]);}, (y.rangeBand() - 2)/2);
+    // draw a separator to group task names that have the same 3 first letters
+    sep_tasks = [];
+    cur_task_prefix = '';
+    coremap.stats.forEach(function(item, index, array) {
+        if (cur_task_prefix.length == 0) {
+            cur_task_prefix = item.task.substring(0, 3);
+        } else if (!item.task.startsWith(cur_task_prefix)) {
+            sep_tasks.push(item.task);
+            draw_hor_line(svg, 0, width, y(item.task) + y.rangeBand(), '#bbbbbb');
+        }
+    });
 }
 
 var app = angular.module('pw', []);

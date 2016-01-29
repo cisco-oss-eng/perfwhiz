@@ -274,19 +274,21 @@ def get_coremaps(dfds, cap_time_usec, task_re):
     '''
     coremaps =  [
         { "run":"run1", "coremap": [
-                                     { "task":"vnf1", "counts":[[0,5.5,231], [1,15.5,231], [2,25.5,21],
-                                                                [3,35.5,231],[4,45.8,415], [5,55.5,231],
-                                                                [6,65,231], [7,75.5,231],[8,85.5,231],
-                                                                [9,95.5,231]]},
-                                     { "task":"vnf2", "counts":[[2,70.5,91], [31,45.1,152]]},
-            { "task":"all tasks", "counts":[[1,10.5,231], [2,30.5,21], [4,21.8,415],[31,45.1,152]]}
-                                      ]
+             { "task":"vnf1", "counts":[[0,5.5,231], [1,15.5,231], [2,25.5,21],
+                                        [3,35.5,231],[4,45.8,415], [5,55.5,231],
+                                        [6,65,231], [7,75.5,231],[8,85.5,231],
+                                        [9,95.5,231]]},
+             { "task":"vnf2", "counts":[[2,70.5,91], [31,45.1,152]]},
+             { "task":"all tasks", "counts":[[1,10.5,231], [2,30.5,21], [4,21.8,415],[31,45.1,152]]}
+             ],
+             "minsw": 5, "maxsw": 415
         },
         { "run":"run2", "coremap": [
-                                     { "task":"vnf1", "counts":[[4,40.5,51], [7,0.8,215]]},
-                                     { "task":"vnf2", "counts":[[30,35.1,62]]},
-            { "task":"all tasks", "counts":[[4,40.5,51], [7,0.8,215],[30,35.1,62]]}
-                                      ]
+             { "task":"vnf1", "counts":[[4,40.5,51], [7,0.8,215]]},
+             { "task":"vnf2", "counts":[[30,35.1,62]]},
+             { "task":"all tasks", "counts":[[4,40.5,51], [7,0.8,215],[30,35.1,62]]
+             ],
+             "minsw": 51, "maxsw": 215
         }
     ]
     '''
@@ -347,14 +349,16 @@ def get_coremaps(dfds, cap_time_usec, task_re):
     cml = []
     gb = dfm.groupby('task_name')
     task_list = gb.groups.keys()
+    task_list.sort()
+    print task_list
     for task in task_list:
         counts = []
         dfg = gb.get_group(task)
         for index, row in dfg.iterrows():
             counts.append([row['cpu'], row['percent'], row['count']])
-        cml.append({"task": task, "counts": counts})
+        cml.append({"task": task,  "counts": counts})
 
-    coremap = {"run": dfd.short_name, "coremap":cml}
+    coremap = {"run": dfd.short_name, "coremap":cml, "extent": str([min_count, max_count])}
     coremaps = [coremap]
     return coremaps
 

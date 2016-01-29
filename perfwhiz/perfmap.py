@@ -139,7 +139,7 @@ def set_short_names(dfds):
     non matching part of the names.
     Example of names: ../../haswell/h1x216.cdict    ../../haswell/h5x113.cdict
     Resulting reduced names: h1x216 h5x113
-    Caveat: do not reduce any numeric digits at the tail, e.g. 01x218.cdict 02x208.cdict
+    Caveat: do not strip out any numeric digits at both ends, e.g. 01x218.cdict 02x208.cdict
     must return [1x218, 2x208] must not cut out the trailing 8
 
     '''
@@ -158,7 +158,7 @@ def set_short_names(dfds):
         # find longest match from head
         max_index = min(len(name), len(strip_head))
         for index in range(max_index):
-            if name[index] != strip_head[index]:
+            if name[index] != strip_head[index] or name[index].isdigit():
                 strip_head = name[:index]
                 break
 
