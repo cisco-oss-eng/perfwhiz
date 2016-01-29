@@ -162,6 +162,9 @@ class DfDesc(object):
     - name
     '''
     def __init__(self, cdict_file, df):
+        # remove the cdict extension if any
+        if cdict_file.endswith('.cdict'):
+            cdict_file = cdict_file[:-6]
         self.name = cdict_file
         self.multiplier = 1.0
         self.df = df

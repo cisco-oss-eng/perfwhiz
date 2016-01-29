@@ -99,7 +99,7 @@ var colormap = {{colormap_list}};
 var task_data = [{% for task in task_list %}
 {task:"{{task.name}}",counts:{{task.exit_count}}, cpu:{{task.cpu}}, sw:{{task.sw}}}{% if not loop.last %},{% endif %}
 {% endfor %}];
-// [ { run:"run1", coremap: [ { task:"vnf1", counts:[[1,10,21], [4,21,45]]},
+// [ { run:"run1", stats: [ { task:"vnf1", counts:[[1,10,21], [4,21,45]]},
 //                            { task:"vnf2", counts:[[31,45,12]]} ]
 //   },
 // ]
@@ -323,8 +323,11 @@ function draw_cpusw(scope) {
     max_sw = Math.max(10, Math.ceil(max_sw/round_unit)*round_unit);
     xcpu.domain([0, 1]);
     xsw.domain([0, max_sw]);
-    var cpu_color = colormap[0];
-    var sw_color = colormap[7];
+    var sw_color = "#cb181d"; // red
+    // get a set of all starting (max) 3 letter strings for task names
+    var task_color_keys = task_data.map(function(d) { return d.task.substring(0, 3); })
+    var task_color_key = d3.scale.ordinal().domain(task_color_keys).range(d3.range(20));
+    var task_color = d3.scale.category20()
     var axis = svg.append("g")
         .attr("class", "x axis")
         .call(xCpuAxis);
@@ -340,7 +343,7 @@ function draw_cpusw(scope) {
         .attr("width", 20)
         .attr("height", 20)
         .style("opacity", 0.8)
-        .style("fill", cpu_color);
+        .style("fill", task_color(0));
     axis = svg.append("g")
         .attr("class", "x axis")
         .attr("transform", "translate(0," + height + ")")
@@ -372,12 +375,12 @@ function draw_cpusw(scope) {
         .attr("height", y.rangeBand())
         .attr("x", 0)
         .attr("width", function(d) { return xcpu(d.cpu/100); })
-        .style("opacity", 0.8)
-        .style("fill", cpu_color)
+        .style("opacity", 0.4)
+        .style("fill", function(d) { return task_color(task_color_key(d.task.substring(0,3)));})
         .on("mouseover", function(d) {
             div.transition()
                 .duration(200)
-                .style("opacity", 0.9);
+                .style("opacity", 0.8);
             var matrix = this.getScreenCTM()
                 .translate(+this.getAttribute("cx"),
                            +this.getAttribute("cy"));
@@ -393,7 +396,7 @@ function draw_cpusw(scope) {
             div.transition()
                 .duration(500)
                 .style("opacity", 0);
-            d3.select(this).style("opacity", 0.8);
+            d3.select(this).style("opacity", 0.4);
         });
     state
         .append("rect")
@@ -401,14 +404,14 @@ function draw_cpusw(scope) {
         .attr("x", 0)
         .attr("y", (y.rangeBand()/2))
         .attr("width", function(d) { return Math.max(0, xsw(d.sw) - 6); })
-        .style("opacity", 0.7)
+        .style("opacity", 0.9)
         .style("fill", sw_color);
     state
         .append("circle")
         .attr("r", 6)
         .attr("cx", function(d) { return xsw(d.sw); })
         .attr("cy", (y.rangeBand()/2))
-        .style("opacity", 0.6)
+        .style("opacity", 0.9)
         .style("fill", sw_color)
         .on("mouseover", function(d) {
             div.transition()
@@ -425,9 +428,10 @@ function draw_cpusw(scope) {
             div.transition()
                 .duration(500)
                 .style("opacity", 0);
-            d3.select(this).style("opacity", 0.6);
+            d3.select(this).style("opacity", 0.9);
         });
 }
+
 
 function draw_line(svg, x1, y1, x2, y2, color) {
     svg.append("line")
@@ -456,7 +460,7 @@ function draw_coremap(scope) {
     var total_height = 40 + task_list.length * 20 + margin.top + margin.bottom;
     var height = total_height - margin.top - margin.bottom;
     var y = d3.scale.ordinal()
-        .rangeBands([height, 0], 0.01, 0.01);
+        .rangeBands([height, 0], 0.01, 0.05);
     var yAxis = d3.svg.axis()
         .scale(y)
         .orient("left");
@@ -498,7 +502,49 @@ function draw_coremap(scope) {
     draw_vert_line(svg, x(xrange[xrange.length - 1]), 0, height, tot_color);
     [8,16,24].forEach(function (sb) { draw_vert_line(svg, x(sb), 0, height, "#bbbbbb"); });
     // build all the core pods for each task
-
+    var blues = d3.scale.linear()
+        .domain([0, 50, 100])
+        .range(['#deebf7','#9ecae1','#3182bd']);
+    var oranges = d3.scale.linear()
+        .domain([0, 50, 100])
+        .range(['#fee6ce','#fdae6b','#e6550d']);
+    var state = svg.selectAll(".g")
+        .data(coremap.stats)
+        .enter().append("g")
+        .attr("class", "g")
+        .attr("transform", function(d) { return "translate(0, " + (y(d.task) + 1) + ")"; });
+    state.selectAll("rect")
+      .data(function(d) { return d.counts; })
+    .enter().append("rect")
+        .attr("height", y.rangeBand() - 2)
+        .attr("x", function(d) { return x(d[0]); })
+        .attr("width", x.rangeBand() - 2)
+        .style("opacity", 0.8)
+        .style("fill", function(d) { return blues(d[1]); })
+        .on("mouseover", function(d, i) {
+            div.transition()
+                .duration(200)
+                .style("opacity", 0.9);
+            var matrix = this.getScreenCTM()
+                .translate(+this.getAttribute("cx"),
+                           +this.getAttribute("cy"));
+            var task = this.parentNode.__data__.task;
+            div	.html('<ul class="list-group"><li class="list-group-item active">' + task + ' on core ' + d[0] + '</li>' +
+                      '<li class="list-group-item">core usage&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d[1] +'%</span></li>' +
+                      '<li class="list-group-item">ctx switches&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d[2] +'</span></li></ul>')
+                .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 30) + "px")
+                .style("left", (d3.event.pageX) + "px");
+            d3.select(this).style("opacity", 1);
+        })
+        .on("mousemove", function(d) {
+            div	.style("left", (d3.event.pageX) + "px");
+        })
+        .on("mouseout", function(d) {
+            div.transition()
+                .duration(500)
+                .style("opacity", 0);
+            d3.select(this).style("opacity", 0.8);
+        });
 }
 
 var app = angular.module('pw', []);
