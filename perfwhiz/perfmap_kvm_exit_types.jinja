@@ -124,7 +124,7 @@ task_max_len = 0;
 task_data.forEach(function(element, index, array) {
     task_max_len = Math.max(task_max_len, element['task'].length);
 });
-task_max_px = task_max_len * 7 + 5;
+task_max_px = task_max_len * 8 + 10;
 var margin = {top: 30, right: 20, bottom: 40, left: task_max_px},
     width = total_width - margin.left - margin.right,
     height = total_height - margin.top - margin.bottom;

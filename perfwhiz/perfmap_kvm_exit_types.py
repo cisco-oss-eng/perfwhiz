@@ -324,7 +324,7 @@ def get_coremaps(dfds, cap_time_usec, task_re):
     # 2     ASA.1.vcpu0   11     12391
 
     # Add a % column
-    df['percent'] = ((df['duration'] * 100 * 10) // time_span_usec) / 10
+    df['percent'] = np.round((df['duration'] * 100) / time_span_usec, 2)
 
     # many core-pinned system tasks have a duration of 0 (swapper, watchdog...)
     df.fillna(100, inplace=True)
@@ -369,6 +369,7 @@ def get_coremaps(dfds, cap_time_usec, task_re):
     dfalltasks = gball.aggregate(np.sum)
     dfalltasks['task_name'] = alltasks_label
     dfalltasks['cpu'] = dfalltasks.index
+    dfalltasks['percent'] = np.round(dfalltasks['percent'], 2)
     # concatenate all dfs
     dfm = pandas.concat([dfm, dfalltasks], ignore_index=True)
 
