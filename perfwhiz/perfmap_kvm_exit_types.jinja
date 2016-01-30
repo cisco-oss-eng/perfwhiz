@@ -93,7 +93,7 @@ th {
 </div>
 
 <script>
-
+var max_cores = {{info.max_cores}};
 var reasonmap = {{exit_reason_list}};
 var colormap = {{colormap_list}};
 var task_data = [{% for task in task_list %}
@@ -115,9 +115,9 @@ var total_width = 1100;
 // Generic code below
 
 // allow height of the chart to be a function of the number of horizontal bars
-var total_height = 40 + task_data.length * 40;
+var total_height = 40 + task_data.length * 20;
 total_height = Math.max(220, total_height);
-total_height = Math.min(800, total_height);
+//total_height = Math.min(800, total_height);
 
 // approximate left margin required based on longest task name
 task_max_len = 0;
@@ -451,7 +451,6 @@ function draw_hor_line(svg, x1, x2, y, color) {
 // ----- Coremap
 function draw_coremap(scope) {
     var coremap = coremaps[scope.coremap_index];
-    var max_cores = 32;
     var x = d3.scale.ordinal()
         .rangeBands([0, width], 0.01, 0.01);
     var xAxis = d3.svg.axis()
@@ -473,10 +472,10 @@ function draw_coremap(scope) {
                 .append("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
     var xrange = d3.range(max_cores);
-    xrange.push('0-31');
+    var x_label_allcores = '0-' + (max_cores - 1);
+    xrange.push(x_label_allcores);
     y.domain(task_list);
     x.domain(xrange);
-    var sw_color = colormap[7];
     var axis = svg.append("g")
         .attr("class", "x axis")
         .attr("transform", "translate(0," + height + ")")
@@ -498,8 +497,9 @@ function draw_coremap(scope) {
         .attr("transform", "translate(" + (width) + ",0)")
         .call(yAxis2);
     // delimitate total and socket boundary
-    draw_vert_line(svg, x(xrange[xrange.length - 1]), 0, height, '#888888');
-    [8,16,24].forEach(function (sb) { draw_vert_line(svg, x(sb), 0, height, "#bbbbbb"); });
+    sb = d3.range(8, max_cores, 8);
+    sb.push(x_label_allcores);
+    sb.forEach(function (sb) { draw_vert_line(svg, x(sb), 0, height, "#bbbbbb"); });
     // build all the core pods for each task
     var blues = d3.scale.linear()
         .domain([0, 50, 100])
@@ -550,14 +550,13 @@ function draw_coremap(scope) {
     draw_half_rect('cpu', function(d) {return blues(d[1]);}, 0);
     draw_half_rect('sw', function(d) {return oranges(d[2]);}, (y.rangeBand() - 2)/2);
     // draw a separator to group task names that have the same 3 first letters
-    sep_tasks = [];
     cur_task_prefix = '';
     coremap.stats.forEach(function(item, index, array) {
         if (cur_task_prefix.length == 0) {
             cur_task_prefix = item.task.substring(0, 3);
         } else if (!item.task.startsWith(cur_task_prefix)) {
-            sep_tasks.push(item.task);
             draw_hor_line(svg, 0, width, y(item.task) + y.rangeBand(), '#bbbbbb');
+            cur_task_prefix = item.task.substring(0, 3);
         }
     });
 }

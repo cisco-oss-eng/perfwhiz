@@ -346,11 +346,36 @@ def get_coremaps(dfds, cap_time_usec, task_re):
 
     # Merge the 2 df using the task_name/cpu as the joining key
     dfm = pandas.merge(df, dfsw, how="left", on=['task_name', 'cpu'])
+
+    alltasks_label = 'all tasks'
+
+    # calculate the sum of all percent and switches per task
+    dfallcores = dfm.drop('cpu', axis=1)
+    gball = dfallcores.groupby('task_name')
+    dfallcores = gball.aggregate(np.sum)
+    dfallcores['task_name'] = dfallcores.index
+    dfallcores['cpu'] = '0-31'
+
+    # sort all the tasks in reverse order (without the 'all tasks')
+    task_list = gball.groups.keys()
+    task_list.sort(reverse=True)
+    task_list.append(alltasks_label)
+    # concatenate the 2 dfs
+    dfm = pandas.concat([dfm, dfallcores], ignore_index=True)
+
+    # calculate the sum of all percent and switches per cpu
+    dfalltasks = dfm.drop('task_name', axis=1)
+    gball = dfalltasks.groupby('cpu')
+    dfalltasks = gball.aggregate(np.sum)
+    dfalltasks['task_name'] = alltasks_label
+    dfalltasks['cpu'] = dfalltasks.index
+    # concatenate all dfs
+    dfm = pandas.concat([dfm, dfalltasks], ignore_index=True)
+
+    # generate the data structure for the jinja template
     cml = []
     gb = dfm.groupby('task_name')
-    task_list = gb.groups.keys()
-    task_list.sort()
-    print task_list
+
     for task in task_list:
         counts = []
         dfg = gb.get_group(task)
@@ -454,6 +479,7 @@ def show_kvm_exit_types(dfds, cap_time_usec, task_re, label):
         "label": label,
         "window": "{:,d}".format(cap_time_usec / 1000),
         "date": time.strftime("%d-%b-%Y"),    # 01-Jan-2016 format
+        "max_cores": 32,
         "version": __version__
     }
     template_loader = FileSystemLoader(searchpath=".")
