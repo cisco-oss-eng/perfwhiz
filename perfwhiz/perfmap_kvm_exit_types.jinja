@@ -5,10 +5,12 @@
 <link href="https://maxcdn.bootstrapcdn.com/bootswatch/3.3.6/flatly/bootstrap.min.css" rel="stylesheet" type="text/css" />
 <link href="https://cdn.datatables.net/1.10.10/css/jquery.dataTables.min.css" rel="stylesheet" type="text/css" />
 <script src="https://code.jquery.com/jquery.min.js"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.2/angular.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/1.1.1/ui-bootstrap.min.js"></script>
 <script src="https://cdn.datatables.net/1.10.10/js/jquery.dataTables.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.6/d3.min.js"></script>
-<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.2/angular.min.js"></script>
+<!-- script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"-->
+
 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width">
@@ -51,28 +53,26 @@ th {
       </div>
       <div class="collapse navbar-collapse">
            <ul class="nav navbar-nav">
-                <li ng-repeat="mode in modes" ng-class="{active: current_index == $index}"
+                <li ng-repeat="mode in modes" ng-class="{active: current_index==$index}"
                     ng-click="handleEvent($event, $index)">
                     <a href="#">{[mode.title]}</a>
                 </li>
-           </ul>
-           <ul class="nav navbar-nav navbar-right" ng-hide="true">
-            <li class="dropdown">
-              <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
-                  <span class="glyphicon glyphicon-menu-hamburger" style="font-size:1em;" aria-hidden="true"></span></a>
-
-              <ul class="dropdown-menu">
-                <li ng-repeat="mode in modes" ng-hide="current_index == $index" ng-click="handleEvent($event, $index)">
-                    <a href="#"><span class="glyphicon glyphicon-{[mode.icon]}" style="font-size:1.2em;" aria-hidden="true"></span> Show {[mode.title]}</a>
-                </li>
-              </ul>
-            </li>
           </ul>
       </div>
   </div>
 </nav>
+
 <div class="container-fluid">
-    <h1><span class="glyphicon glyphicon-{[current_mode.icon]}" aria-hidden="true"></span> {[current_mode.title]}   <small>{{info.label}} ({{info.window}} msec window)</small></h1>
+    <h1><span class="glyphicon glyphicon-{[current_mode.icon]}" aria-hidden="true"></span> {[current_mode.title]}
+        <div class="btn-group" uib-dropdown keyboard-nav ng-show="(current_index==2) && (coremap_runs.length>1)">
+        <button id="simple-btn-keyboard-nav" type="button" class="btn btn-primary" uib-dropdown-toggle>
+            {[coremap_runs[coremap_index]]} <span class="caret"></span>
+        </button>
+        <ul uib-dropdown-menu role="menu" aria-labelledby="simple-btn-keyboard-nav">
+            <li ng-hide="coremap_index==$index" ng-repeat="run in coremap_runs" role="menuitem" ng-click="selectRun($event, $index)"><a href="#">{[run]}</a></li>
+        </ul>
+    </div>
+     <small>{{info.label}} ({{info.window}} msec window)</small></h1>
 </div>
 <div class="container-fluid" ng-show="current_index == 0">
     <svg id="svg-cpu"></svg>
@@ -83,7 +83,7 @@ th {
   <table id="table" class="table display compact table-bordered" cellspacing="50" width="100%"></table>
 </div>
 <div class="container-fluid" ng-show="current_index == 2">
-    <svg id="svg-coremap"></svg>
+    <svg ng-repeat="run in coremap_runs" id="svg-coremap{[$index]}" ng-show="coremap_index==$index"></svg>
 </div>
 <br><br>
 <div class="container-fluid">
@@ -450,6 +450,10 @@ function draw_hor_line(svg, x1, x2, y, color) {
 }
 // ----- Coremap
 function draw_coremap(scope) {
+    if (coremap_state[scope.coremap_index]) {
+        return;
+    }
+    coremap_state[scope.coremap_index] = true;
     var coremap = coremaps[scope.coremap_index];
     var x = d3.scale.ordinal()
         .rangeBands([0, width], 0.01, 0.01);
@@ -466,7 +470,7 @@ function draw_coremap(scope) {
     var yAxis = d3.svg.axis()
         .scale(y)
         .orient("left");
-    var svg = d3.select("#svg-coremap")
+    var svg = d3.select("#svg-coremap"+scope.coremap_index)
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", total_height)
                 .append("g")
@@ -561,14 +565,13 @@ function draw_coremap(scope) {
     });
 }
 
-var app = angular.module('pw', []);
+var app = angular.module('pw', ['ui.bootstrap']);
 var modes = [
     {title:"CPU and Context Switches", icon:"dashboard", svg:"cpu", init:draw_cpusw},
     {title:"KVM Exit count by type", icon:"log-out", svg:"kvm_exits", init:draw_kvm_exits},
     {title:"CoreMap", icon:"equalizer", svg:"coremap", init:draw_coremap}
-
 ];
-
+var coremap_state = coremaps.map(function(d) { return false; });
 app.config(['$interpolateProvider', function($interpolateProvider) {
   $interpolateProvider.startSymbol('{[');
   $interpolateProvider.endSymbol(']}');
@@ -577,7 +580,6 @@ app.controller('PwCtrl', PwCtrl);
 function PwCtrl($scope) {
     $scope.current_index = 0
     $scope.modes = modes;
-    $scope.coremap_index = 0;
     $scope.handleEvent = function(event, index) {
         $scope.current_index = index;
         $scope.current_mode = $scope.modes[index];
@@ -588,6 +590,12 @@ function PwCtrl($scope) {
         }
     };
     $scope.handleEvent(null, 0);
+    $scope.coremap_runs = coremaps.map(function(d) { return d.run; });
+    $scope.coremap_index = 0;
+    $scope.selectRun = function(event, index) {
+        $scope.coremap_index = index;
+        draw_coremap($scope);
+    };
 }
 </script>
 

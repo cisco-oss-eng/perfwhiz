@@ -292,100 +292,101 @@ def get_coremaps(dfds, cap_time_usec, task_re):
         }
     ]
     '''
+    coremaps = []
+    for dfd in dfds:
+        df = dfd.df
+        time_span_usec = get_time_span_usec(df)
 
-    dfd = dfds[0]
-    df = dfd.df
-    time_span_usec = get_time_span_usec(df)
+        # remove unneeded columns
+        df = filter_df_core(df, task_re)
 
-    # remove unneeded columns
-    df = filter_df_core(df, task_re)
+        # at this point we have a df that looks like this:
+        #         task_name  cpu  duration
+        # 0     ASA.1.vcpu0    8      7954
+        # 1     ASA.1.vcpu0    9      5475
+        # 2     ASA.1.vcpu0    9      1000
+        # 3     ASA.1.vcpu0   11     12391
+        # 4     ASA.1.vcpu0   12     21025
+        # 5     ASA.1.vcpu0   13      6447
+        # etc...
+        if len(df) == 0:
+            print
+            print 'No selection matching "%s"' % (task_re)
+            return None
+        gb = df.groupby(['task_name', 'cpu'], as_index=False)
 
-    # at this point we have a df that looks like this:
-    #         task_name  cpu  duration
-    # 0     ASA.1.vcpu0    8      7954
-    # 1     ASA.1.vcpu0    9      5475
-    # 2     ASA.1.vcpu0    9      1000
-    # 3     ASA.1.vcpu0   11     12391
-    # 4     ASA.1.vcpu0   12     21025
-    # 5     ASA.1.vcpu0   13      6447
-    # etc...
-    if len(df) == 0:
-        print
-        print 'No selection matching "%s"' % (task_re)
-        return None
-    gb = df.groupby(['task_name', 'cpu'], as_index=False)
+        # because we only show percentages, there is no need to apply the multiplier
+        # add duration values
+        df = gb.aggregate(np.sum)
+        #         task_name  cpu  duration
+        # 0     ASA.1.vcpu0    8      7954
+        # 1     ASA.1.vcpu0    9      6475
+        # 2     ASA.1.vcpu0   11     12391
 
-    # because we only show percentages, there is no need to apply the multiplier
-    # add duration values
-    df = gb.aggregate(np.sum)
-    #         task_name  cpu  duration
-    # 0     ASA.1.vcpu0    8      7954
-    # 1     ASA.1.vcpu0    9      6475
-    # 2     ASA.1.vcpu0   11     12391
+        # Add a % column
+        df['percent'] = np.round((df['duration'] * 100) / time_span_usec, 2)
 
-    # Add a % column
-    df['percent'] = np.round((df['duration'] * 100) / time_span_usec, 2)
+        # many core-pinned system tasks have a duration of 0 (swapper, watchdog...)
+        df.fillna(100, inplace=True)
+        df.drop(['duration'], axis=1, inplace=True)
 
-    # many core-pinned system tasks have a duration of 0 (swapper, watchdog...)
-    df.fillna(100, inplace=True)
-    df.drop(['duration'], axis=1, inplace=True)
+        # count number of rows with same task and cpu
+        dfsw = DataFrame(gb.size())
+        dfsw.reset_index(inplace=True)
+        dfsw.rename(columns={0: 'count'}, inplace=True)
+        # adjust context switch count if the requested cap time is > time_span
+        if dfd.multiplier > 1.0:
+            dfsw['count'] = (dfsw['count'].astype(int) * dfd.multiplier).astype(int)
+        min_count = dfsw['count'].min()
+        max_count = dfsw['count'].max()
+        #       task_name  cpu  count
+        # 0  ASA.01.vcpu0    8   9853
+        # 1  ASA.01.vcpu0    9    348
+        # 1  ASA.01.vcpu0   11    619
 
-    # count number of rows with same task and cpu
-    dfsw = DataFrame(gb.size())
-    dfsw.reset_index(inplace=True)
-    dfsw.rename(columns={0: 'count'}, inplace=True)
-    # adjust context switch count if the requested cap time is > time_span
-    if dfd.multiplier > 1.0:
-        dfsw['count'] = (dfsw['count'].astype(int) * dfd.multiplier).astype(int)
-    min_count = dfsw['count'].min()
-    max_count = dfsw['count'].max()
-    #       task_name  cpu  count
-    # 0  ASA.01.vcpu0    8   9853
-    # 1  ASA.01.vcpu0    9    348
-    # 1  ASA.01.vcpu0   11    619
+        # Merge the 2 df using the task_name/cpu as the joining key
+        dfm = pandas.merge(df, dfsw, how="left", on=['task_name', 'cpu'])
 
-    # Merge the 2 df using the task_name/cpu as the joining key
-    dfm = pandas.merge(df, dfsw, how="left", on=['task_name', 'cpu'])
+        alltasks_label = 'all tasks'
 
-    alltasks_label = 'all tasks'
+        # calculate the sum of all percent and switches per task
+        dfallcores = dfm.drop('cpu', axis=1)
+        gball = dfallcores.groupby('task_name')
+        dfallcores = gball.aggregate(np.sum)
+        dfallcores['percent'] = np.round(dfallcores['percent'], 2)
+        dfallcores['task_name'] = dfallcores.index
+        dfallcores['cpu'] = '0-31'
 
-    # calculate the sum of all percent and switches per task
-    dfallcores = dfm.drop('cpu', axis=1)
-    gball = dfallcores.groupby('task_name')
-    dfallcores = gball.aggregate(np.sum)
-    dfallcores['task_name'] = dfallcores.index
-    dfallcores['cpu'] = '0-31'
+        # sort all the tasks in reverse order (without the 'all tasks')
+        task_list = gball.groups.keys()
+        task_list.sort(reverse=True)
+        task_list.append(alltasks_label)
+        # concatenate the 2 dfs
+        dfm = pandas.concat([dfm, dfallcores], ignore_index=True)
 
-    # sort all the tasks in reverse order (without the 'all tasks')
-    task_list = gball.groups.keys()
-    task_list.sort(reverse=True)
-    task_list.append(alltasks_label)
-    # concatenate the 2 dfs
-    dfm = pandas.concat([dfm, dfallcores], ignore_index=True)
+        # calculate the sum of all percent and switches per cpu
+        dfalltasks = dfm.drop('task_name', axis=1)
+        gball = dfalltasks.groupby('cpu')
+        dfalltasks = gball.aggregate(np.sum)
+        dfalltasks['task_name'] = alltasks_label
+        dfalltasks['cpu'] = dfalltasks.index
+        dfalltasks['percent'] = np.round(dfalltasks['percent'], 2)
+        # concatenate all dfs
+        dfm = pandas.concat([dfm, dfalltasks], ignore_index=True)
 
-    # calculate the sum of all percent and switches per cpu
-    dfalltasks = dfm.drop('task_name', axis=1)
-    gball = dfalltasks.groupby('cpu')
-    dfalltasks = gball.aggregate(np.sum)
-    dfalltasks['task_name'] = alltasks_label
-    dfalltasks['cpu'] = dfalltasks.index
-    dfalltasks['percent'] = np.round(dfalltasks['percent'], 2)
-    # concatenate all dfs
-    dfm = pandas.concat([dfm, dfalltasks], ignore_index=True)
+        # generate the data structure for the jinja template
+        cml = []
+        gb = dfm.groupby('task_name')
 
-    # generate the data structure for the jinja template
-    cml = []
-    gb = dfm.groupby('task_name')
+        for task in task_list:
+            counts = []
+            dfg = gb.get_group(task)
+            for index, row in dfg.iterrows():
+                counts.append([row['cpu'], row['percent'], row['count']])
+            cml.append({"task": task,  "counts": counts})
 
-    for task in task_list:
-        counts = []
-        dfg = gb.get_group(task)
-        for index, row in dfg.iterrows():
-            counts.append([row['cpu'], row['percent'], row['count']])
-        cml.append({"task": task,  "counts": counts})
-
-    coremap = {"run": dfd.short_name, "coremap":cml, "extent": str([min_count, max_count])}
-    coremaps = [coremap]
+        coremap = {"run": dfd.short_name, "coremap":cml, "extent": str([min_count, max_count])}
+        coremaps.append(coremap)
     return coremaps
 
 
