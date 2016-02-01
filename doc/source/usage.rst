@@ -5,16 +5,18 @@ Usage
 Examples of captures
 --------------------
 
-Note that an installation using pip will provide wrappers that can be called directly from the shell command line (e.g. "perfcap" or "perfmap").
+.. note:: an installation using pip will provide wrappers that can be called directly from the shell command line (e.g. "perfcap" or "perfmap").
 These wrappers are not available with an installation using a git clone and the corresponding python scripts must be called using the python
 executable (e.g. "python perfcap.py ...").
 
-Note that trace captures require root permission (perfcap must be called by root or using sudo).
+.. note:: trace captures *require root permission* (perfcap must be called by root or using sudo).
 
 Capture context switch and kvm exit traces for 5 seconds and generate traces into test.cdict::
+
     perfcap -s 5 --all test
 
 Capture all traces for 1 second and use the "tmap.csv" mapping file to assign logical task names to task IDs::
+
     perfcap --all --map tmap.csv test2
 
 Traces will be stored in the corresponding cdict file (e.g. "test2.cdict").
@@ -47,12 +49,14 @@ For example assume each run requires launching 2 groups of 2 instances of VMs wh
 Without annotation the analysis will have to work with generic names such as:
 
 Run #1::
+
     - vm_router, pid1 (group 1)
     - vm_router, pid2 (group 2)
     - vm_firewall, pid3 (group 1)
     - vm_firewall, pid4 (group 2)
 
 Run #2::
+
     - vm_router, pid5 (group 1)
     - vm_router, pid6 (group 2)
     - vm_firewall, pid7 (group 1)
@@ -64,12 +68,14 @@ associate pid1 to pid5, pid2 to piud6 etc...
 With annotation, the task name could reflect the role and group membership:
 
 Run #1::
+
     - vm_router.1, pid9
     - vm_router.2, pid10
     - vm_firewall.1, pid11
     - vm_firewall.2, pid12
 
-Run #2:
+Run #2::
+
     - vm_router.1, pid13
     - vm_router.2, pid14
     - vm_firewall.1, pid15
@@ -94,6 +100,7 @@ CSV Mapping file
 A mapping file is a valid comma separated value (CSV) text file that has the following fields in each line:
 
 CSV format::
+
     <tid>,<libvirt-instance-name>,<task-system-type>,<uuid>,<group-type>,<group-id>,<task-name>
 
 .. csv-table:: CSV field description
@@ -108,14 +115,17 @@ CSV format::
     "<task-name>", "name of the task - describes what the task does (e.g. firewall or router...)"
 
 Example of mapping file::
+
     19236,instance-000019f4,vcpu0,8f81e3a1-3ebd-4015-bbee-e291f0672d02,FULL,5,Firewall
     453,instance-00001892,emulator,4a81e3cc-4de0-5030-cbfd-f3c43213c34b,FULL,2,Router
 
 Equivalent simplified version::
+
     19236,,vcpu0,,,5,Firewall
     453,,emulator,,,2,Router
 
 In the current version, the annotated name is calculated as::
+
     <task-name>.<group-id>.<task-system-type>
 
 The <tid> is used as a key for matching perf records to annotated names (i.e. all perf records that have a tid matching
@@ -123,6 +133,7 @@ any entry in the mapping file will have their task name renamed using the above 
 All other fields are therefore ignored.
 
 Resulting annotated name from the above example::
+
     Firewall.05.vcpu0
     Router.02.emulator
 

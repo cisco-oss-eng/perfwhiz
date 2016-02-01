@@ -39,6 +39,7 @@ from jinja2 import Environment
 from jinja2 import FileSystemLoader
 import time
 from __init__ import __version__
+from pkg_resources import resource_filename
 
 # Global variables
 output_chart = None
@@ -152,9 +153,11 @@ def create_charts(dfds, cap_time_usec, task_re, label):
         "max_cores": 32,
         "version": __version__
     }
+    local_path = resource_filename(__name__, 'perfmap_charts.jinja')
+    print local_path
     template_loader = FileSystemLoader(searchpath=".")
     template_env = Environment(loader=template_loader, trim_blocks=True, lstrip_blocks=True)
-    tpl = template_env.get_template("perfmap_charts.jinja")
+    tpl = template_env.get_template(local_path)
     svg_html = tpl.render(exit_reason_list=str(exit_reason_list),
                           task_list=task_list,
                           colormap_list=str(colormap_list),
