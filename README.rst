@@ -9,14 +9,17 @@ generate from the perf traces a visualization of Linux scheduler context switche
 - context switch heat maps (temporal distribution of context switch events)
 - KVM exit heat maps (temporal distribution of kvm entry and exit events)
 - KVM exit types distribution stacked bar charts (exit type distribution per task)
-- core locality heat maps (on which core does task run over time)
 - task scheduler core assignment heat maps (run time % on each core per task - including IDLE time)
 - task per core context switch count heat maps (how many context switches per core per task)
+- core locality heat maps (on which core does task run over time)
 
 
 The capture script wraps around the Linux perf tool to capture events of
 interest (such as context switches, and kvm events) and generates a much more
 compact binary file to be used for analysis offline.
+
+Complete documentation including installation and usage instructions:
+ `<http://perfwhiz.readthedocs.org/en/latest/>`_
 
 Heatmap Gallery
 ---------------

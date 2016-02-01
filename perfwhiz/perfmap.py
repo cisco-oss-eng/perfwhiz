@@ -18,8 +18,6 @@
 # ---------------------------------------------------------
 
 
-import bokeh.plotting
-from collections import OrderedDict
 from optparse import OptionParser
 import os
 import sys
@@ -28,15 +26,19 @@ import pandas
 from pandas import DataFrame
 
 from perf_formatter import open_cdict
-from perf_formatter import write_cdict
 
 from perfmap_common import set_html_file
 from perfmap_common import DfDesc
-
-from perfmap_core import show_core_runs
+from perfmap_common import output_svg_html
+from perfmap_core import get_coremaps
 from perfmap_core import show_core_locality
-from perfmap_kvm_exit_types import show_kvm_exit_types
+from perfmap_kvm_exit_types import get_kvm_exit_data
 from perfmap_sw_kvm_exits import show_sw_kvm_heatmap
+
+from jinja2 import Environment
+from jinja2 import FileSystemLoader
+import time
+from __init__ import __version__
 
 # Global variables
 output_chart = None
@@ -88,50 +90,6 @@ def show_successors(df, task, label):
     print 'Successors of %s (%s)' % (task, label)
     print pandas.concat([series_count, series_percent], axis=1)
 
-def convert(df, new_cdict):
-    # Convert the old style cdict (marshal based) to the new cdict format
-    # The new format is msgpack based and fixes the runtime reporting bug
-    # by aggregating all runtime durations into the next switch event
-    # and removing the runtime events
-    # A dict of runtime delays accumulated indexed by cpu
-    runtime_by_cpu = {}
-    # aggregate all runtimes per cpu
-    count = len(df)
-    print 'Conversion in progress...'
-    for index in xrange(count):
-        event_name = df['event'].iloc[index]
-        cpu = df['cpu'].iloc[index]
-        if event_name == 'sched__sched_stat_runtime':
-            try:
-                duration = df['duration'].iloc[index]
-                runtime_by_cpu[cpu] += duration
-            except KeyError:
-                # the counter is set in on the first sched switch for each cpu
-                pass
-        elif event_name == 'sched__sched_switch':
-            try:
-                if df['pid'].iloc[index]:
-                    # don't bother to update swapper (pid=0)
-                    runtime = runtime_by_cpu[cpu]
-                    df.set_value(index, 'duration', runtime)
-            except KeyError:
-                pass
-            runtime_by_cpu[cpu] = 0
-    # get rid of all the runtime events
-    df = df[df['event'] != 'sched__sched_stat_runtime']
-    print 'End of conversion, marshaling and compressing...'
-    df.fillna(value=0, inplace=True, downcast='infer')
-    # save new cdict
-    res = {'event': df['event'].tolist(),
-           'cpu': df['cpu'].tolist(),
-           'usecs': df['usecs'].tolist(),
-           'pid': df['pid'].tolist(),
-           'task_name': df['task_name'].tolist(),
-           'duration': df['duration'].tolist(),
-           'next_pid': df['next_pid'].tolist(),
-           'next_comm': df['next_comm'].tolist()}
-    write_cdict(new_cdict, res)
-
 def set_short_names(dfds):
     '''
     Reduce the names of a list of dataframe descriptors to minimal non matching characters
@@ -180,6 +138,30 @@ def set_short_names(dfds):
             dfd.short_name = dfd.short_name[:-len(strip_tail)]
 
 
+def create_charts(dfds, cap_time_usec, task_re, label):
+
+    coremaps = get_coremaps(dfds, cap_time_usec, task_re)
+
+    task_list, exit_reason_list, colormap_list = get_kvm_exit_data(dfds, cap_time_usec, task_re)
+
+    # Other misc information in the chart
+    info = {
+        "label": label,
+        "window": "{:,d}".format(cap_time_usec / 1000),
+        "date": time.strftime("%d-%b-%Y"),    # 01-Jan-2016 format
+        "max_cores": 32,
+        "version": __version__
+    }
+    template_loader = FileSystemLoader(searchpath=".")
+    template_env = Environment(loader=template_loader, trim_blocks=True, lstrip_blocks=True)
+    tpl = template_env.get_template("perfmap_charts.jinja")
+    svg_html = tpl.render(exit_reason_list=str(exit_reason_list),
+                          task_list=task_list,
+                          colormap_list=str(colormap_list),
+                          coremaps=coremaps,
+                          info=info)
+    output_svg_html(svg_html, 'charts', task_re)
+
 # ---------------------------------- MAIN -----------------------------------------
 
 def main():
@@ -211,16 +193,6 @@ def main():
                       action="store_true",
                       help="show core locality heat map (requires --task)"
                       )
-    parser.add_option("--core-runtime",
-                      dest="core_runtime",
-                      action="store_true",
-                      help="show % runtime on each core (requires --task)"
-                      )
-    parser.add_option("--core-switch-count",
-                      dest="core_switch_count",
-                      action="store_true",
-                      help="show context switch count on each core (requires --task)"
-                      )
     parser.add_option("--switches",
                       dest="switches",
                       action="store_true",
@@ -230,11 +202,6 @@ def main():
                       dest="kvm_exits",
                       action="store_true",
                       help="show kvm exits heat map (requires --task)"
-                      )
-    parser.add_option("--kvm-exit-types",
-                      dest="kvm_exit_types",
-                      action="store_true",
-                      help="show kvm exit types bar charts (requires --task)"
                       )
     parser.add_option("--show-sleeps",
                       dest="show_sleeps",
@@ -360,22 +327,16 @@ def main():
     if options.core_locality:
         if len(dfds) == 1:
             show_core_locality(dfds[0].df, options.task, options.label)
+            sys.exit(0)
         else:
             print 'Core locality diff is not supported - can only accept 1 cdict argument'
             sys.exit(1)
-
-    if options.core_runtime:
-        show_core_runs(dfds, cap_time, options.task, options.label, True)
-
-    if options.core_switch_count:
-        show_core_runs(dfds, cap_time, options.task, options.label, False)
 
     if options.switches or options.kvm_exits:
         show_sw_kvm_heatmap(dfds[0].df, options.task, options.label, options.switches, options.kvm_exits,
                             options.show_sleeps)
 
-    if options.kvm_exit_types:
-        show_kvm_exit_types(dfds, cap_time, options.task, options.label)
+    create_charts(dfds, cap_time, options.task, options.label)
 
 if __name__ == '__main__':
     main()

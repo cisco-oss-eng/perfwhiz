@@ -2,7 +2,38 @@
 Usage
 =====
 
-WIP
+Examples of captures
+--------------------
+
+Note that an installation using pip will provide wrappers that can be called directly from the shell command line (e.g. "perfcap" or "perfmap").
+These wrappers are not available with an installation using a git clone and the corresponding python scripts must be called using the python
+executable (e.g. "python perfcap.py ...").
+
+Note that trace captures require root permission (perfcap must be called by root or using sudo).
+
+Capture context switch and kvm exit traces for 5 seconds and generate traces into test.cdict::
+    perfcap -s 5 --all test
+
+Capture all traces for 1 second and use the "tmap.csv" mapping file to assign logical task names to task IDs::
+    perfcap --all --map tmap.csv test2
+
+Traces will be stored in the corresponding cdict file (e.g. "test2.cdict").
+
+Examples of chart generation
+----------------------------
+
+Generate charts for all tasks with a name ending with "vcpu0" from the "test.cdict" capture file::
+    perfmap.py -t '.*vcpu0' test.cdict
+
+Only show the first 1000 msec of capture::
+    perfmap.py -t '.*vcpu0' -c 1000 test.cdict
+
+Only show 1000 msec of capture starting from 2 seconds past the start of capture::
+    perfmap.py -t '.*vcpu0' -c 1000 -f 2000 test.cdict
+
+Generate diff charts for 2 capture files::
+    perfmap.py -t '.*vcpu0' test.cdict test2.cdict
+
 
 Task Name Annotation
 --------------------
@@ -69,16 +100,20 @@ CSV format::
     :header: "name", "description"
 
     "<tid>", "linux task ID (also called thread ID)"
-    "<libvirt-instance-name>", "libvirt instance name (VM)"
+    "<libvirt-instance-name>", "libvirt instance name (VM) - ignored"
     "<task-system-type>", "a task type (VM: emulator or vcpu task)"
-    "<uuid>", "instance uuid (OpenStack instance)"
-    "<group-type>", "type of grouping (e.g. service chain type name)"
+    "<uuid>", "instance uuid (OpenStack instance) - ignored"
+    "<group-type>", "type of grouping (e.g. service chain type name) - ignored"
     "<group-id>", "indentifier of the group to distinguish between multiple groups (e.g. service chain number)"
     "<task-name>", "name of the task - describes what the task does (e.g. firewall or router...)"
 
 Example of mapping file::
     19236,instance-000019f4,vcpu0,8f81e3a1-3ebd-4015-bbee-e291f0672d02,FULL,5,Firewall
     453,instance-00001892,emulator,4a81e3cc-4de0-5030-cbfd-f3c43213c34b,FULL,2,Router
+
+Equivalent simplified version::
+    19236,,vcpu0,,,5,Firewall
+    453,,emulator,,,2,Router
 
 In the current version, the annotated name is calculated as::
     <task-name>.<group-id>.<task-system-type>

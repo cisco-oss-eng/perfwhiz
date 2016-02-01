@@ -4,8 +4,7 @@ Installation
 
 perfwhiz comes with two scripts, perfcap.py and perfmap.py. Normally,
 perfcap.py will be installed on the target node for capturing the perf data,
-perfmap.py can be ran from any machine to perform the data analysis, and
-plotting different types of chart upon request.
+perfmap.py can be ran from any machine to plot different types of chart from the capture data.
 
 Both scripts are available in PyPI, and can be installed using either
 "pip install" or source code based installation. In either option of
@@ -37,10 +36,10 @@ or using the tool.
 perfcap.py
 ----------
 
-perfcap.py is a wrapper around Linux perf tool. In order to run perfcap,
+perfcap.py is a wrapper around Linux perf tool. In order to run perfcap.py,
 the native perf tool must be built with Python extension. Run below
-command for a check to see whether this feature is pre-built in your
-distro or not::
+command to check whether this feature is pre-built in the perf version provided by your
+distro::
 
     $ sudo perf script -g python
 
@@ -59,11 +58,11 @@ rebuild the tool::
       etc.
 
 Normally, if you are using a RHEL/CentOS distro, the tool from official
-repository has been built with Python extension alreay, If you are
+repository has been built with Python extension already. If you are
 using a Ubuntu distro, unfortunately you have to rebuild perf and enable
-the feature. Refer to
+the Python scripting extension. Refer to
 `here <http://askubuntu.com/questions/577768/how-can-i-make-perf-script-g-python-work>`_
-for the details on the steps in the case if you need to rebuild the tool.
+for the details on the steps to follow to rebuild perf.
 
 Installation from PyPI will be as easy as::
 
@@ -87,7 +86,7 @@ perfmap.py
 
 perfmap, the analyzer tool of perfwhiz, will do the data analysis based on
 different scheduler events, and draw the charts to present them. It is
-using Pandas, Numpy to perform data processing, and Bokeh for plotting.
+using Pandas, Numpy to perform data processing, Bokeh and D3.js for charts.
 
 Installation from PyPI will be as easy as::
 
