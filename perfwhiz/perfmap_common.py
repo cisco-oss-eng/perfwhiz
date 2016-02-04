@@ -161,7 +161,7 @@ class DfDesc(object):
     - multiplier (to indicate if the df is under sampled)
     - name
     '''
-    def __init__(self, cdict_file, df):
+    def __init__(self, cdict_file, df, merge_sys_tasks=False):
         # remove the cdict extension if any
         if cdict_file.endswith('.cdict'):
             cdict_file = cdict_file[:-6]
@@ -169,17 +169,22 @@ class DfDesc(object):
         self.multiplier = 1.0
         self.df = df
         self.short_name = cdict_file
+        self.from_usec = 0
+        self.to_usec = 0
+        if merge_sys_tasks:
+            # aggregate all the per core tasks (e.g. swapper/0 -> swapper)
+            self.df['task_name'] = self.df['task_name'].str.replace(r'/.*$', '')
 
-    def normalize(self, from_time_usec, cap_time_usec):
+    def normalize(self, from_time_usec, to_time_usec):
         # remove all samples that are under the start time
         if from_time_usec:
             self.df = self.df[self.df['usecs'] >= from_time_usec]
         last_time_usec = self.df['usecs'].iloc[-1]
-        # usec worth of samples in the df
-        df_span_usec = last_time_usec - from_time_usec
-        if cap_time_usec > df_span_usec:
+        if to_time_usec > last_time_usec:
             # eg if the requested cap is 1 sec and the df only contains
             # 500 msec of samples, the multiplier is 2.0
-            self.multiplier = float(cap_time_usec) / df_span_usec
+            self.multiplier = float(to_time_usec - from_time_usec) / (last_time_usec - from_time_usec)
         # remove all samples that are over the cap
-        self.df = self.df[self.df['usecs'] <= (cap_time_usec + from_time_usec)]
+        self.df = self.df[self.df['usecs'] <= to_time_usec]
+        self.from_usec = from_time_usec
+        self.to_usec = to_time_usec

@@ -18,12 +18,7 @@ body {
   font: 12px sans-serif;
   padding-top: 50px;
 }
-.axis path,
-.axis line {
-  fill: none;
-  stroke: #000;
-  shape-rendering: crispEdges;
-}
+
 .bar {
   fill: steelblue;
 }
@@ -41,9 +36,29 @@ th {
 .legend {
   font-size: 12px;
 }
+.grid .tick {
+    stroke: lightgrey;
+    opacity: 0.7;
+}
+.axis path,
+.axis line {
+    fill: none;
+    stroke: lightgray;
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+}
+
+.grid .tick {
+    stroke: lightgrey;
+    stroke-opacity: 0;
+    shape-rendering: crispEdges;
+}
+.grid path {
+          stroke-width: 0;
+}
 </style>
 </head>
-<body ng-app="pw" ng-controller="PwCtrl">
+<body ng-app="pw-heatmaps" ng-controller="PwHeatMapsCtrl">
 
 <nav class="navbar navbar-default navbar-fixed-top">
   <div class="container-fluid">
@@ -62,26 +77,14 @@ th {
 
 <div class="container-fluid">
     <h1><span class="glyphicon glyphicon-{[current_mode.icon]}" aria-hidden="true"></span> {[current_mode.title]}
-        <div class="btn-group" uib-dropdown keyboard-nav ng-show="(current_index==2) && (coremap_runs.length>1)">
-        <button id="simple-btn-keyboard-nav" type="button" class="btn btn-primary" uib-dropdown-toggle>
-            {[coremap_runs[coremap_index]]} <span class="caret"></span>
-        </button>
-        <ul uib-dropdown-menu role="menu" aria-labelledby="simple-btn-keyboard-nav">
-            <li ng-hide="coremap_index==$index" ng-repeat="run in coremap_runs" role="menuitem" ng-click="selectRun($event, $index)"><a href="#">{[run]}</a></li>
-        </ul>
-    </div>
      <small>{{info.label}} ({{info.window}} msec window)</small></h1>
 </div>
 <div class="container-fluid" ng-show="current_index == 0">
-    <svg id="svg-cpu"></svg>
+    <svg id="svg-coreloc" initsvg></svg>
+    <svg id="svg-coreloc-legend"></svg>
 </div>
 <div class="container-fluid" ng-show="current_index == 1">
-  <svg id="svg-kvm-exits"></svg>
-  <br><br>
-  <table id="table" class="table display compact table-bordered" cellspacing="50" width="100%"></table>
-</div>
-<div class="container-fluid" ng-show="current_index == 2">
-    <svg ng-repeat="run in coremap_runs" id="svg-coremap{[$index]}" ng-show="coremap_index==$index"></svg>
+    <svg id="svg-swkvm"></svg>
 </div>
 <br><br>
 <div class="container-fluid">
@@ -92,40 +95,19 @@ th {
 
 <script>
 var max_cores = {{info.max_cores}};
-var reasonmap = {{exit_reason_list}};
-var colormap = {{colormap_list}};
-var task_data = [{% for task in task_list %}
-{task:"{{task.name}}",counts:{{task.exit_count}}, cpu:{{task.cpu}}, sw:{{task.sw}}}{% if not loop.last %},{% endif %}
-{% endfor %}];
-// [ { run:"run1", stats: [ { task:"vnf1", counts:[[1,10,21], [4,21,45]]},
-//                            { task:"vnf2", counts:[[31,45,12]]} ], extent: [12, 45]
-//   },
-// ]
-var coremaps = [{% for item in coremaps %}
-{run:"{{item.run}}", extent:{{item.extent}}, stats: [
-{% for coremap in item.coremap %}
-{task:"{{coremap.task}}", counts:{{coremap.counts}}}{% if not loop.last %},{% endif %}
-{% endfor %}]}
-{% if not loop.last %},{% endif %}
-{% endfor %}];
+var swk_events = {{swk_events}};
 
 var total_width = 1100;
 var grid_color = "#bbbbbb";
 
 // Generic code below
-
-// allow height of the chart to be a function of the number of horizontal bars
-var total_height = 40 + task_data.length * 20;
-total_height = Math.max(250, total_height);
-//total_height = Math.min(800, total_height);
+var div = d3.select("body").append("div")
+    .attr("class", "tooltip")
+    .style("opacity", 0);
+var total_height = 800;
 
 // approximate left margin required based on longest task name
-task_max_len = 0;
-task_data.forEach(function(element, index, array) {
-    task_max_len = Math.max(task_max_len, element['task'].length);
-});
-task_max_px = task_max_len * 8 + 10;
-var margin = {top: 30, right: 20, bottom: 40, left: task_max_px},
+var margin = {top: 30, right: 30, bottom: 40, left: 30},
     width = total_width - margin.left - margin.right,
     height = total_height - margin.top - margin.bottom;
 
@@ -135,10 +117,6 @@ var y = d3.scale.ordinal()
 var yAxis = d3.svg.axis()
     .scale(y)
     .orient("left");
-
-var div = d3.select("body").append("div")	
-    .attr("class", "tooltip")				
-    .style("opacity", 0);
 
 function draw_line(svg, x1, y1, x2, y2, color) {
     svg.append("line")
@@ -155,7 +133,6 @@ function draw_vert_line(svg, x, y1, y2, color) {
 function draw_hor_line(svg, x1, x2, y, color) {
     draw_line(svg, x1, y, x2, y, color);
 }
-
 function get_legend_text_width(text_list) {
     // a fake svg to calculate max rendered width
     var tmp_svg = d3.select("body").append("svg").attr("width", 1000).attr("height", 400);
@@ -227,112 +204,27 @@ function draw_legend(svg, text_list, color_list, width, align, margin, columns) 
         .text(function(d, i) { return text_list[i]; });
     var max_width = get_legend_text_width(text_list);
 }
-
 // ----- KVM EXIT TYPES COUNT CHART
-
-function draw_kvm_exits(scope) {
-    var x = d3.scale.linear()
-        .rangeRound([0, width]);
-    var xAxis = d3.svg.axis()
-        .scale(x)
-        .orient("bottom")
-        .tickFormat(d3.format(".2s"));
-    var svg = d3.select("#svg-kvm-exits")
-                .attr("width", width + margin.left + margin.right)
-                .attr("height", height + margin.top + margin.bottom)
-                .append("g")
-                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
-    task_data.forEach(function(d) {
-        var y0 = 0;
-        var counts = d["counts"];
-        d.exit_desc = [];
-        counts.forEach(function(count, index, array) {
-            if (count > 0) {
-               d.exit_desc.push({name: reasonmap[index], y0: y0, y1: y0 += +count, task:d.task, count:+count, color:colormap[index]})
-            }
+function get_text_width(text_list) {
+    // a fake svg to calculate max rendered width
+    var tmp_svg = d3.select("body").append("svg").attr("width", 1000).attr("height", 400);
+    var tmp_lg = tmp_svg.append("g").attr("class", "g");
+    var max_width = 0;
+    tmp_lg.selectAll("text")
+        .data(text_list)
+        .enter().append("text")
+        .text(function (d, i) { return d;});
+    tmp_lg.selectAll("text")
+        .each(function() {
+          max_width = Math.max(this.getBBox().width, max_width);
         });
-        d.total = d.exit_desc[d.exit_desc.length - 1].y1;
-    });
-
-    y.domain(task_data.map(function(d) { return d.task; }));
-    var max_x = d3.max(task_data, function(d) { return d.total; })
-    x.domain([0, max_x * 1.15]);
-
-    svg.append("g")
-        .attr("class", "x axis")
-        .attr("transform", "translate(0," + height + ")")
-        .call(xAxis)
-        .append("text")
-        .attr("x", width)
-        .attr("dy", "-0.2em")
-        .style("text-anchor", "end")
-        .text("Exit Count");
-
-    svg.append("g")
-        .attr("class", "y axis")
-        .call(yAxis);
-
-    var state = svg.selectAll(".state")
-        .data(task_data)
-        .enter().append("g")
-        .attr("class", "g")
-        .attr("transform", function(d) { return "translate(0, " + y(d.task) + ")"; });
-
-    state.selectAll("rect")
-      .data(function(d) { return d.exit_desc; })
-    .enter().append("rect")
-        .attr("height", y.rangeBand())
-        .attr("x", function(d) { return x(d.y0); })
-        .attr("width", function(d) { return x(d.y1) - x(d.y0); })
-        .style("opacity", 0.8)
-        .style("fill", function(d) { return d.color; })
-        .on("mouseover", function(d) {
-            div.transition()
-                .duration(200)
-                .style("opacity", 0.9);
-            var matrix = this.getScreenCTM()
-                .translate(+this.getAttribute("cx"),
-                           +this.getAttribute("cy"));
-            div	.html('<ul class="list-group"><li class="list-group-item"><b>' +  d.task + '</b><br>' +
-                      d.name + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d.count +'</span></li></ul>')
-                .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 30) + "px")
-                .style("left", (d3.event.pageX) + "px");
-            d3.select(this).style("opacity", 1);
-        })
-        .on("mousemove", function(d) {
-            div	.style("left", (d3.event.pageX) + "px");
-        })
-        .on("mouseout", function(d) {
-            div.transition()
-                .duration(500)
-                .style("opacity", 0);
-            d3.select(this).style("opacity", 0.8);
-        });
-    draw_legend(svg, reasonmap, colormap, width, "right", 0, 1);
-
-    var tcolumns = reasonmap.map(function(reason, index, array) { return {title:reason}; });
-    tcolumns.push({title:'Total'});
-    tcolumns.splice(0,0,{title:'Name'});
-    var tdata = task_data.map(function(elem, index, array) {
-      row = [ elem.task ].concat(elem["counts"]).concat(elem["total"])
-      return row;
-    });
-
-    $(document).ready(function() {
-        $('#table').DataTable({
-          autoWidth: true,
-          ordering: true,
-          paging: false,
-          searching: false,
-          data:tdata,
-          columns:tcolumns
-        });
-    } );
+    tmp_svg.remove();
+    return max_width;
 }
 
-// ----- CPU Usage and Context Switches
-function draw_cpusw(scope) {
+// ----- Context Switches and KVM events heatmaps
+function draw_swkvm(scope) {
+/*
     var xcpu = d3.scale.linear()
         .rangeRound([0, width - 120]);
     var xsw = d3.scale.linear()
@@ -467,139 +359,161 @@ function draw_cpusw(scope) {
                 .style("opacity", 0);
             d3.select(this).style("opacity", 0.9);
         });
+*/
+}
+
+function draw_right_arrow(node, x, y, h, w, color) {
+    var data = [[x, y-h/2], [x+w, y], [x, y+h/2]];
+    var line = d3.svg.line()
+                 .x(function(d) { return d[0];})
+                 .y(function(d) { return d[1];})
+                 .interpolate("linear");
+    node.append("path")
+        .attr("d", line(data))
+        .style("stroke", color)
+        .style("fill", color);
+    node.append("path")
+        .attr("d", line([[x-w*3,y], [x,y]]))
+        .style("stroke", color)
+        .style("stroke-width", 3)
+        .style("fill", color);
+}
+var si_fmt = d3.format("s");
+function usec_format(usec) {
+    return si_fmt(usec/1000000)+"s";
+}
+var color = d3.scale.category20();
+function get_task_color(index) {
+    return color(index % 20);
 }
 
 // ----- Coremap
-function draw_coremap(scope) {
-    if (coremap_state[scope.coremap_index]) {
-        return;
-    }
-    coremap_state[scope.coremap_index] = true;
-    var coremap = coremaps[scope.coremap_index];
-    var x = d3.scale.ordinal()
-        .rangeBands([0, width], 0.01, 0.01);
+function draw_coreloc(scope) {
+    var x = d3.scale.linear()
+        .range([0, width]);
     var xAxis = d3.svg.axis()
         .scale(x)
-        .orient("bottom");
-    // shadowing the global variables as the height and width is special for coremaps
-    var margin = {top: 30, right: task_max_px, bottom: 40, left: task_max_px};
-    var task_list = coremap.stats.map(function(d) { return d.task; });
-    var total_height = 40 + task_list.length * 20 + margin.top + margin.bottom;
-    var height = total_height - margin.top - margin.bottom;
+        .orient("bottom")
+        .tickFormat(usec_format)
+        .tickSize(-height, 0, 0);
+
+    x.domain([swk_events.usecs_min, swk_events.usecs_max]);
     var y = d3.scale.ordinal()
-        .rangeBands([height, 0], 0.01, 0.05);
+        .rangeBands([height, 0], 0.01, 0.5);
     var yAxis = d3.svg.axis()
         .scale(y)
-        .orient("left");
-    var svg = d3.select("#svg-coremap"+scope.coremap_index)
+        .orient("left")
+        .tickSize(-width, 0, -width);
+    var core_range = d3.range(max_cores);
+    y.domain(core_range);
+
+    var svg = d3.select("#svg-coreloc")
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", total_height)
                 .append("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-    var xrange = d3.range(max_cores);
-    var x_label_allcores = '0-' + (max_cores - 1);
-    xrange.push(x_label_allcores);
-    y.domain(task_list);
-    x.domain(xrange);
     var axis = svg.append("g")
         .attr("class", "x axis")
         .attr("transform", "translate(0," + height + ")")
         .call(xAxis);
+    axis
+        .append("text")
+        .attr("x", width-28)
+        .attr("dy", "2em")
+        .style("text-anchor", "middle")
+        .text("time");
+    draw_right_arrow(axis, width-10, 30, 10, 10, "red");
     svg.append("g")
         .attr("class", "y axis")
         .call(yAxis);
-    var xAxis2 = d3.svg.axis()
-        .scale(x)
-        .orient("top");
-    svg.append("g")
-        .attr("class", "x axis")
-        .call(xAxis2)
     var yAxis2 = d3.svg.axis()
         .scale(y)
-        .orient("right");
+        .orient("right")
+        .tickSize(0, 0, 0);
     var axis = svg.append("g")
         .attr("class", "y axis")
         .attr("transform", "translate(" + (width) + ",0)")
         .call(yAxis2);
-    // delimitate total and socket boundary
-    sb = d3.range(8, max_cores, 8);
-    sb.push(x_label_allcores);
-    sb.forEach(function (sb) { draw_vert_line(svg, x(sb), 0, height, grid_color); });
-    // build all the core pods for each task
-    var blues = d3.scale.linear()
-        .domain([0, 50, 100])
-        .range(['#deebf7','#9ecae1','#3182bd']);
-    var oranges = d3.scale.linear()
-        .domain(coremap.extent)
-        .range(['#fee6ce','#e6550d']);
-    function draw_half_rect(id, colormap, y_offset) {
-        var state = svg.selectAll("#" + id)
-            .data(coremap.stats)
-            .enter().append("g")
-            .attr("class", "g")
-            .attr("id", id)
-            .attr("transform", function(d) { return "translate(0, " + (y(d.task) + 1 + y_offset) + ")"; });
-        state.selectAll("rect")
-          .data(function(d) { return d.counts; })
+    var event_height = y.rangeBand() / 2;
+    var y_offset = event_height / 2;
+    var state = svg.selectAll(".state")
+        .data(swk_events.task_events)
+        .enter().append("g")
+        .attr("class", "g")
+        .attr("id", function(d, i) {d.color=get_task_color(i); return d.task;});
+    state
+        .selectAll("rect")
+        // events is a list of [usec, duration, cpu] triplets
+        .data(function(d) {return d.events['sched__sched_switch'];})
         .enter().append("rect")
-            .attr("height", (y.rangeBand() - 2)/2)
-            .attr("x", function(d) { return x(d[0]); })
-            .attr("width", x.rangeBand() - 2)
-            .style("opacity", 0.8)
-            .style("fill", colormap)
-            .on("mouseover", function(d, i) {
-                div.transition()
-                    .duration(200)
-                    .style("opacity", 0.9);
-                var matrix = this.getScreenCTM()
-                    .translate(+this.getAttribute("cx"),
-                               +this.getAttribute("cy"));
-                var task = this.parentNode.__data__.task;
-                div	.html('<ul class="list-group"><li class="list-group-item active">' + task + ' on core ' + d[0] + '</li>' +
-                          '<li class="list-group-item">core usage&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d[1] +'%</span></li>' +
-                          '<li class="list-group-item">ctx switches&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d[2] +'</span></li></ul>')
-                    .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 30) + "px")
-                    .style("left", (d3.event.pageX) + "px");
-                d3.select(this).style("opacity", 1);
-            })
-            .on("mousemove", function(d) {
-                div	.style("left", (d3.event.pageX) + "px");
-            })
-            .on("mouseout", function(d) {
-                div.transition()
-                    .duration(500)
-                    .style("opacity", 0);
-                d3.select(this).style("opacity", 0.8);
-            });
-    }
-    draw_half_rect('cpu', function(d) {return blues(d[1]);}, 0);
-    draw_half_rect('sw', function(d) {return oranges(d[2]);}, (y.rangeBand() - 2)/2);
-    // draw a separator to group task names that have the same 3 first letters
-    cur_task_prefix = '';
-    coremap.stats.forEach(function(item, index, array) {
-        if (cur_task_prefix.length == 0) {
-            cur_task_prefix = item.task.substring(0, 3);
-        } else if (!item.task.startsWith(cur_task_prefix)) {
-            draw_hor_line(svg, 0, width, y(item.task) + y.rangeBand(), grid_color);
-            cur_task_prefix = item.task.substring(0, 3);
-        }
-    });
+        .attr("x", function(d) { var x0 = x((d[0] - d[1])); if (x0 < 0) { x0 = 0;} return x0;})
+        .attr("y", function(d) { return y(d[2]) + y_offset;})
+        .attr("height", event_height)
+        .attr("width", function(d) { var x0 = x((d[0] - d[1])); if (x0 < 0) { x0 = 0;}  return x(d[0]) - x0;})
+        .style("opacity", 0.5)
+        .style("fill", function(d) { return this.parentNode.__data__.color;})
+        .on("mouseover", function(d) {
+            div.transition()
+                .duration(100)
+                .style("opacity", 1);
+            var matrix = this.getScreenCTM()
+                .translate(+this.getAttribute("x"),
+                           +this.getAttribute("y"));
+            div	.html('<button class="btn btn-primary" type="button">' + this.parentNode.__data__.task +
+                      '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d[1] + ' usec</span></button>')
+                .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 40) + "px")
+                .style("left", (d3.event.pageX) + "px");
+        })
+        .on("mousemove", function(d) {
+            div	.style("left", (d3.event.pageX) + "px");
+        })
+        .on("mouseout", function(d) {
+            div.transition()
+                .duration(500)
+                .style("opacity", 0);
+            d3.select(this).style("opacity", 0.5);
+        });
+    var text_list = swk_events.task_events.map(function(d) {return d.task;});
+    var color_list = swk_events.task_events.map(function(d, i) {return get_task_color(i);});
+    var lg_svg = d3.select("#svg-coreloc-legend")
+                        .attr("width", width + margin.left + margin.right);
+    draw_legend(lg_svg, text_list, color_list, width, "center", 0, 5)
 }
 
-var app = angular.module('pw', ['ui.bootstrap']);
+var app = angular.module('pw-heatmaps', ['ui.bootstrap']);
 var modes = [
-    {title:"CPU and Context Switches", icon:"dashboard", svg:"cpu", init:draw_cpusw},
-    {title:"KVM Exit count by type", icon:"log-out", svg:"kvm_exits", init:draw_kvm_exits},
-    {title:"CoreMap", icon:"equalizer", svg:"coremap", init:draw_coremap}
+    {title:"Core locality over time", icon:"globe", svg:"coreloc", init:draw_coreloc},
+//    {title:"Context switches and KVM events Heatmap", icon:"option-horizontal", svg:"swkvm", init:draw_swkvm}
 ];
-var coremap_state = coremaps.map(function(d) { return false; });
 app.config(['$interpolateProvider', function($interpolateProvider) {
   $interpolateProvider.startSymbol('{[');
   $interpolateProvider.endSymbol(']}');
 }]);
-app.controller('PwCtrl', PwCtrl);
-function PwCtrl($scope) {
+app.controller('PwHeatMapsCtrl', PwHeatMapsCtrl);
+app.directive('initsvg', function() {
+    return {
+        link: function($scope, element, attrs) {
+            // Trigger when number of children changes,
+            // including by directives like ng-repeat
+            var watch = $scope.$watch(function() {
+                return element.children().length;
+            }, function() {
+                // Wait for templates to render
+                $scope.$evalAsync(function() {
+                    // Finally, directives are evaluated
+                    // and templates are renderer here
+                    $scope.handleEvent(null, 0);
+                });
+            });
+        },
+    };
+});
+
+function PwHeatMapsCtrl($scope) {
+    $scope.task_list = swk_events.task_events.map(function(d) { return d.task; });
+    $scope.coreloc_state = $scope.task_list.map(function(d) { return false; });
     $scope.current_index = 0
+
     $scope.modes = modes;
     $scope.handleEvent = function(event, index) {
         $scope.current_index = index;
@@ -609,13 +523,6 @@ function PwCtrl($scope) {
             initf($scope);
             $scope.current_mode['init'] = null;
         }
-    };
-    $scope.handleEvent(null, 0);
-    $scope.coremap_runs = coremaps.map(function(d) { return d.run; });
-    $scope.coremap_index = 0;
-    $scope.selectRun = function(event, index) {
-        $scope.coremap_index = index;
-        draw_coremap($scope);
     };
 }
 </script>

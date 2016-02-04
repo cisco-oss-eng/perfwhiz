@@ -51,65 +51,6 @@ def normalize_task_name(task):
 def normalize_df_task_name(df):
     df['task_name'] = df.apply(lambda row: normalize_task_name(row['task_name']), axis=1)
 
-def cycle_colors(chunk, palette=Spectral6):
-    """ Build a color list just cycling through a given palette.
-
-    Args:
-        chunck (seq): the chunk of elements to generate the color list
-        palette (seq[color]) : a palette of colors to cycle through
-
-    Returns:
-        colors
-
-    """
-    colors = []
-
-    g = itertools.cycle(palette)
-    for i in range(len(chunk)):
-        colors.append(next(g))
-
-    return colors
-
-def show_core_locality(df, task_re, label):
-
-    df = df[df['event'] == 'sched__sched_switch']
-    df = df[df['task_name'].str.match(task_re)]
-    # aggregate all the per core tasks (e.g. swapper/0 -> swapper)
-    df['task_name'] = df['task_name'].str.replace(r'/.*$', '')
-    # group by task name
-    gb = df.groupby('task_name')
-    task_list = gb.groups
-
-    p = figure(plot_width=1000, plot_height=800, **title_style)
-
-    p.xaxis.axis_label = 'time (usecs)'
-    p.yaxis.axis_label = 'core'
-    p.legend.orientation = "bottom_right"
-    p.xaxis.axis_label_text_font_size = "10pt"
-    p.yaxis.axis_label_text_font_size = "10pt"
-    p.title = "Core locality (%s)" % (label)
-
-    color_list = cycle_colors(task_list)
-
-    for task, color in zip(task_list, color_list):
-        dfe = gb.get_group(task)
-        # add 1 column to contain the starting time for each run period
-        dfe['start'] = dfe['usecs'] - dfe['duration']
-        tid = dfe['pid'].iloc[0]
-        count = len(dfe)
-        legend_text = '%s:%d (%d)' % (task, tid, count)
-        # draw end of runs
-        p.circle('usecs', 'cpu', source=ColumnDataSource(dfe),
-                 size=get_disc_size(count) + 2, color=color,
-                 alpha=0.3,
-                 legend=legend_text)
-        # draw segments to show the entire runs
-        p.segment('start', 'cpu', 'usecs', 'cpu', line_width=5, line_color=color,
-                  source=ColumnDataSource(dfe))
-
-    # specify how to output the plot(s)
-    output_html(p, 'coreloc', task_re)
-
 def filter_df_core(df, task_re, remove_cpu=False):
     # remove unneeded columns
     df = df.drop(['next_pid', 'pid', 'usecs', 'next_comm'], axis=1)

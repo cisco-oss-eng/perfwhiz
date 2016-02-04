@@ -177,3 +177,55 @@ def show_sw_kvm_heatmap(df, task_re, label, show_ctx_switches, show_kvm, show_sl
         # split the list into an array of rows with 2 charts per row
         gp = gridplot(split_list(chart_list, 2))
         output_html(gp, prefix, task_re)
+
+def get_sw_kvm_events(dfd, task_re):
+    '''
+    :param df:
+    :param task_re:
+    :return: [
+        { "task": "task10",
+          "events": [
+            {"kvm_exit": [ [0,1,30], [20, 421, 30], ...],
+             "kvm_entry": [],
+             ...
+          ]}, ...
+    ]
+    '''
+    gb = get_groupby(dfd.df, task_re)
+    nb_tasks = len(gb.groups)
+
+    if nb_tasks == 0:
+        raise RuntimeError('No selection matching: ' + task_re)
+    sw_kvm_events = {}
+    event_list = ['sched__sched_switch', 'sched__sched_stat_sleep', 'kvm_exit', 'kvm_entry'];
+    task_list = gb.groups.keys()
+    task_list.sort()
+    duration_max = -1
+
+    task_event_list = []
+    for task in task_list:
+        dfg = gb.get_group(task)
+        dfg = dfg.drop(['task_name', 'pid', 'next_pid', 'next_comm'], axis=1)
+        dfg = dfg[dfg.columns[::-1]]
+        task_events = {}
+        for event in event_list:
+            events = []
+            dfe = dfg[dfg.event == event]
+            duration_max = max(duration_max, dfe['duration'].max())
+            dfe = dfe.drop('event', axis=1)
+
+            # limit to 50k events
+            if len(dfe) > 50000:
+                dfe = dfe[:50000]
+                print 'Series for %s display truncated to 50000 events' % (event)
+            itt = dfe.itertuples(index=False)
+            for row in itt:
+                # each row is a tuple with usec, duration and core
+                events.append(list(row))
+            task_events[event] = events
+        task_event_list.append({"task": task, "events": task_events})
+    return {'task_events': task_event_list,
+            'usecs_min': dfd.from_usec,
+            'usecs_max': dfd.to_usec,
+            'duration_max': duration_max}
+

@@ -31,9 +31,8 @@ from perfmap_common import set_html_file
 from perfmap_common import DfDesc
 from perfmap_common import output_svg_html
 from perfmap_core import get_coremaps
-from perfmap_core import show_core_locality
 from perfmap_kvm_exit_types import get_kvm_exit_data
-from perfmap_sw_kvm_exits import show_sw_kvm_heatmap
+from perfmap_sw_kvm_exits import show_sw_kvm_heatmap, get_sw_kvm_events
 
 from jinja2 import Environment
 from jinja2 import FileSystemLoader
@@ -138,32 +137,40 @@ def set_short_names(dfds):
         if strip_tail:
             dfd.short_name = dfd.short_name[:-len(strip_tail)]
 
-
-def create_charts(dfds, cap_time_usec, task_re, label):
-
-    coremaps = get_coremaps(dfds, cap_time_usec, task_re)
-
-    task_list, exit_reason_list, colormap_list = get_kvm_exit_data(dfds, cap_time_usec, task_re)
-
+def get_info(dfd, label):
     # Other misc information in the chart
-    info = {
+    return {
         "label": label,
-        "window": "{:,d}".format(cap_time_usec / 1000),
+        "window": "{:,d}".format((dfd.to_usec - dfd.from_usec) / 1000),
         "date": time.strftime("%d-%b-%Y"),    # 01-Jan-2016 format
         "max_cores": 32,
         "version": __version__
     }
-    local_path = resource_filename(__name__, 'perfmap_charts.jinja')
-    print local_path
+
+def get_tpl(tpl_file):
+    local_path = resource_filename(__name__, tpl_file)
     template_loader = FileSystemLoader(searchpath=".")
     template_env = Environment(loader=template_loader, trim_blocks=True, lstrip_blocks=True)
-    tpl = template_env.get_template(local_path)
+    return template_env.get_template(local_path)
+
+def create_charts(dfds, cap_time_usec, task_re, label):
+    coremaps = get_coremaps(dfds, cap_time_usec, task_re)
+    task_list, exit_reason_list, colormap_list = get_kvm_exit_data(dfds, cap_time_usec, task_re)
+    tpl = get_tpl('perfmap_charts.jinja')
     svg_html = tpl.render(exit_reason_list=str(exit_reason_list),
                           task_list=task_list,
                           colormap_list=str(colormap_list),
                           coremaps=coremaps,
-                          info=info)
+                          info=get_info(dfds[0], label))
     output_svg_html(svg_html, 'charts', task_re)
+
+def create_heatmaps(dfd, cap_time_usec, task_re, label):
+    swk_events = get_sw_kvm_events(dfd, task_re)
+
+    tpl = get_tpl('perfmap_heatmaps.jinja')
+    svg_html = tpl.render(swk_events=str(swk_events),
+                          info=get_info(dfd, label))
+    output_svg_html(svg_html, 'heatmaps', task_re)
 
 # ---------------------------------- MAIN -----------------------------------------
 
@@ -243,6 +250,11 @@ def main():
                       help="(optional) start the analysis after first <from_time> msec"
                            " of capture (default=0)"
                       )
+    parser.add_option("--merge-sys-tasks",
+                      dest="merge_sys_tasks",
+                      action="store_true",
+                      help="group all system tasks (e.g. swapper/0 -> swapper)"
+                      )
     (options, args) = parser.parse_args()
 
     if options.from_time:
@@ -276,7 +288,7 @@ def main():
     for cdict_file in cdict_files:
         perf_dict = open_cdict(cdict_file, options.map)
         df = DataFrame(perf_dict)
-        dfd = DfDesc(cdict_file, df)
+        dfd = DfDesc(cdict_file, df, options.merge_sys_tasks)
         dfds.append(dfd)
         last_usec = df['usecs'].iloc[-1]
         if min_cap_usec == 0:
@@ -328,12 +340,8 @@ def main():
         sys.exit(1)
 
     if options.core_locality:
-        if len(dfds) == 1:
-            show_core_locality(dfds[0].df, options.task, options.label)
-            sys.exit(0)
-        else:
-            print 'Core locality diff is not supported - can only accept 1 cdict argument'
-            sys.exit(1)
+        create_heatmaps(dfds[0], cap_time, options.task, options.label)
+        sys.exit(0)
 
     if options.switches or options.kvm_exits:
         show_sw_kvm_heatmap(dfds[0].df, options.task, options.label, options.switches, options.kvm_exits,
@@ -342,4 +350,10 @@ def main():
     create_charts(dfds, cap_time, options.task, options.label)
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as ex:
+        print
+        print 'Error: ' + ex.message
+        print
+        sys.exit(1)
