@@ -215,7 +215,8 @@ function draw_swkvm(scope) {
         .tickSize(-height, 0, 0);
     var y = d3.scale.log()
         .range([height, 0])
-        .domain([1, swk_events.usecs_duration_max]).nice();
+        .domain([1, swk_events.usecs_duration_max]);
+//        .domain([1, swk_events.usecs_duration_max]).nice();
     var yAxis = d3.svg.axis()
         .scale(y)
         .tickFormat(usec_format)
@@ -372,6 +373,7 @@ function draw_coreloc(scope) {
                 .translate(+this.getAttribute("x"),
                            +this.getAttribute("y"));
             div	.html('<button class="btn btn-primary" type="button">' + this.parentNode.__data__.task +
+                      ' core ' + d[2] +
                       '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d[1] + ' usec</span></button>')
                 .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 40) + "px")
                 .style("left", (d3.event.pageX) + "px");
