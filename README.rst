@@ -4,32 +4,65 @@ Overview
 
 This repository contains a set of python scripts for helping tune any Linux
 system for performance and scale by leveraging the Linux *perf* tool and
-generate from the perf traces a visualization of Linux scheduler context switches and KVM events:
+generating from the perf traces 2 HTML dashboards that represent Linux scheduler context switches
+and KVM events.
 
+The basic dashboard illustrates general scheduler and KVM events for all tasks selected at capture time:
+- KVM exit types distribution stacked bar charts (exit type distribution per task)
+- task scheduler core assignment and context switch count heat maps (run time % and context switch count on each core per task - including total time per core and per task)
+
+The detailed dashboard illustrates detailed scheduler and KVM events at the task level:
 - context switch heat maps (temporal distribution of context switch events)
 - KVM exit heat maps (temporal distribution of kvm entry and exit events)
-- KVM exit types distribution stacked bar charts (exit type distribution per task)
-- task scheduler core assignment heat maps (run time % on each core per task - including IDLE time)
-- task per core context switch count heat maps (how many context switches per core per task)
-- core locality heat maps (on which core does task run over time)
+- Coremaps (on which core does any given task run over time)
 
+The task annotation feature further allows the generation of cross-run charts (diffs) that can help
+detect more easily differences of behavior across multiple captures/runs.
 
 The capture script wraps around the Linux perf tool to capture events of
-interest (such as context switches, and kvm events) and generates a much more
+interest (such as context switches and kvm events) and generates a much more
 compact binary file to be used for analysis offline.
 
 Complete documentation including installation and usage instructions:
  `<http://perfwhiz.readthedocs.org/en/latest/>`_
 
-Heatmap Gallery
----------------
-
-(to add sample html files with embedded Java Script - try it out for now if you're curious)
 
 perfwhiz Workflow
-------------------
+-----------------
+
+The following diagram illustrates the 2 phases for getting the dashboards: capture phase (perfcap.py) and dashboard generation phase (perfmap.py).
 
 .. image:: images/perfwhiz.png
+
+Capture is performed on the system under test, by invoking the perfcap.py script and specify which tasks to capture events from and for how long.
+The result of each capture is a binary file (with the cdict extension, cdict stands for compressed dictionary).
+
+The binary files can then later be provided to the dashboard generation tool (perfmap.py) to generate the corresponding dashboards.
+This dashboard generation phase is typically done offline on a workstation where perfmap is installed (laptop, macbook...).
+The generated dashboards are HTML files that can be viewed using any browser.
+
+Dependencies
+------------
+Dependencies are automatically installed when perfwhiz is being installed (refer to the Installation section).
+
+The capture tool perfcap.py depends on:
+- the Linux perf tool (compiled with the python extension)
+- pbr python package
+- msgpack python package
+
+The dashboard generation tool perfmap.py depends on:
+- pandas/numpy python package
+
+The generated HTML dashboards contain Javascript code that will pull some Javascript libraries from CDN servers
+when loaded in the browser (CDN is a public network of servers that contain libraries that are downloaded by browsers).
+Therefore, viewing those dashboards require access to the Internet.
+The following Javascript libraries are required by the dashboards:
+- jquery
+- datatables
+- d3
+- angular
+- angular-ui-bootstrap
+
 
 Licensing
 ---------
