@@ -53,7 +53,7 @@ th {
            <ul class="nav navbar-nav">
                 <li ng-repeat="mode in modes" ng-class="{active: current_index==$index}"
                     ng-click="handleEvent($event, $index)">
-                    <a href="#">{[mode.title]}</a>
+                    <a href="#"><span class="glyphicon glyphicon-{[mode.icon]}" aria-hidden="true"></span>&nbsp;{[mode.title]}</a>
                 </li>
           </ul>
       </div>
@@ -61,7 +61,7 @@ th {
 </nav>
 
 <div class="container-fluid">
-    <h1><span class="glyphicon glyphicon-{[current_mode.icon]}" aria-hidden="true"></span> {[current_mode.title]}
+    <h1>{[current_mode.title]}
         <div class="btn-group" uib-dropdown keyboard-nav ng-show="(current_index==2) && (coremap_runs.length>1)">
         <button id="simple-btn-keyboard-nav" type="button" class="btn btn-primary" uib-dropdown-toggle>
             {[coremap_runs[coremap_index]]} <span class="caret"></span>
@@ -114,51 +114,9 @@ var grid_color = "#bbbbbb";
 
 // Generic code below
 
-// allow height of the chart to be a function of the number of horizontal bars
-var total_height = 40 + task_data.length * 20;
-total_height = Math.max(250, total_height);
-//total_height = Math.min(800, total_height);
-
-// approximate left margin required based on longest task name
-task_max_len = 0;
-task_data.forEach(function(element, index, array) {
-    task_max_len = Math.max(task_max_len, element['task'].length);
-});
-task_max_px = task_max_len * 8 + 10;
-var margin = {top: 30, right: 20, bottom: 40, left: task_max_px},
-    width = total_width - margin.left - margin.right,
-    height = total_height - margin.top - margin.bottom;
-
-var y = d3.scale.ordinal()
-    .rangeRoundBands([height, 0], 0.1);
-
-var yAxis = d3.svg.axis()
-    .scale(y)
-    .orient("left");
-
-var div = d3.select("body").append("div")	
-    .attr("class", "tooltip")				
-    .style("opacity", 0);
-
-function draw_line(svg, x1, y1, x2, y2, color) {
-    svg.append("line")
-        .attr("x1", x1)
-        .attr("y1", y1)
-        .attr("x2", x2)
-        .attr("y2", y2)
-        .attr("stroke-width", 1)
-        .attr("stroke", color);
-}
-function draw_vert_line(svg, x, y1, y2, color) {
-    draw_line(svg, x, y1, x, y2, color);
-}
-function draw_hor_line(svg, x1, x2, y, color) {
-    draw_line(svg, x1, y, x2, y, color);
-}
-
-function get_legend_text_width(text_list) {
+function get_text_width(text_list) {
     // a fake svg to calculate max rendered width
-    var tmp_svg = d3.select("body").append("svg").attr("width", 1000).attr("height", 400);
+    var tmp_svg = d3.select("body").append("svg").attr("width", 1000).attr("height", 1000);
     var tmp_lg = tmp_svg.append("g").attr("class", "g");
     var max_width = 0;
     tmp_lg.selectAll("text")
@@ -167,10 +125,41 @@ function get_legend_text_width(text_list) {
         .text(function (d, i) { return d;});
     tmp_lg.selectAll("text")
         .each(function() {
-          max_width = Math.max(this.getBBox().width, max_width);
+            max_width = Math.max(this.getBBox().width, max_width);
         });
     tmp_svg.remove();
     return max_width;
+}
+
+// allow height of the chart to be a function of the number of horizontal bars
+function get_total_height(bar_count, margin, min_height) {
+    var height = 40 + (bar_count * 20) + margin.top + margin.bottom;
+    if (min_height) {
+        height = Math.max(min_height, height);
+    }
+    return height;
+}
+
+var div = d3.select("body").append("div")	
+    .attr("class", "tooltip")				
+    .style("opacity", 0);
+
+function draw_line(svg, x1, y1, x2, y2, color) {
+    svg.append("line")
+        .attr({
+            x1:x1,
+            y1:y1,
+            x2:x2,
+            y2:y2,
+            'stroke-width':1,
+            stroke:color
+        });
+}
+function draw_vert_line(svg, x, y1, y2, color) {
+    draw_line(svg, x, y1, x, y2, color);
+}
+function draw_hor_line(svg, x1, x2, y, color) {
+    draw_line(svg, x1, y, x2, y, color);
 }
 
 function draw_legend(svg, text_list, color_list, width, align, margin, columns) {
@@ -180,7 +169,7 @@ function draw_legend(svg, text_list, color_list, width, align, margin, columns) 
     var row_height = color_rect_size + inner_gap;
     // calculate the width of the legend box
     var count = text_list.length;
-    var col_width = get_legend_text_width(text_list) + color_rect_size + inner_gap * 2;
+    var col_width = get_text_width(text_list) + color_rect_size + inner_gap * 2;
     columns = Math.min(count, columns);
     var lb_width = (col_width * columns) + 2 * inner_margin;
     // calculate the x coordinates of the legend box based
@@ -225,12 +214,23 @@ function draw_legend(svg, text_list, color_list, width, align, margin, columns) 
         .attr("dy", "1.2em")
         .style("text-anchor", "start")
         .text(function(d, i) { return text_list[i]; });
-    var max_width = get_legend_text_width(text_list);
 }
 
 // ----- KVM EXIT TYPES COUNT CHART
 
 function draw_kvm_exits(scope) {
+    var kvm_task_data = task_data.filter(function(d) {return d.counts.length;});
+    var task_list = kvm_task_data.map(function(d) { return d.task; });
+    var margin = {top: 30, right: 20, bottom: 40, left: get_text_width(task_list)+15};
+    var total_height = get_total_height(task_list.length, margin, 280);
+    var width = total_width - margin.left - margin.right;
+    var height = total_height - margin.top - margin.bottom;
+    var y = d3.scale.ordinal()
+        .rangeRoundBands([height, 0], 0.1)
+        .domain(task_list);
+    var yAxis = d3.svg.axis()
+        .scale(y)
+        .orient("left");
     var x = d3.scale.linear()
         .rangeRound([0, width]);
     var xAxis = d3.svg.axis()
@@ -242,22 +242,23 @@ function draw_kvm_exits(scope) {
                 .attr("height", height + margin.top + margin.bottom)
                 .append("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
-    task_data.forEach(function(d) {
+    kvm_task_data.forEach(function(d) {
         var y0 = 0;
         var counts = d["counts"];
         d.exit_desc = [];
         counts.forEach(function(count, index, array) {
             if (count > 0) {
-               d.exit_desc.push({name: reasonmap[index], y0: y0, y1: y0 += +count, task:d.task, count:+count, color:colormap[index]})
+               d.exit_desc.push({name: reasonmap[index], y0: y0,
+                                 y1: y0 += +count,
+                                 task:d.task,
+                                 count:+count, color:colormap[index]})
             }
         });
         d.total = d.exit_desc[d.exit_desc.length - 1].y1;
     });
 
-    y.domain(task_data.map(function(d) { return d.task; }));
-    var max_x = d3.max(task_data, function(d) { return d.total; })
-    x.domain([0, max_x * 1.15]);
+    var max_x = d3.max(kvm_task_data, function(d) { return d.total; })
+    x.domain([0, max_x * 1.1]).nice();
 
     svg.append("g")
         .attr("class", "x axis")
@@ -274,7 +275,7 @@ function draw_kvm_exits(scope) {
         .call(yAxis);
 
     var state = svg.selectAll(".state")
-        .data(task_data)
+        .data(kvm_task_data)
         .enter().append("g")
         .attr("class", "g")
         .attr("transform", function(d) { return "translate(0, " + y(d.task) + ")"; });
@@ -314,7 +315,7 @@ function draw_kvm_exits(scope) {
     var tcolumns = reasonmap.map(function(reason, index, array) { return {title:reason}; });
     tcolumns.push({title:'Total'});
     tcolumns.splice(0,0,{title:'Name'});
-    var tdata = task_data.map(function(elem, index, array) {
+    var tdata = kvm_task_data.map(function(elem, index, array) {
       row = [ elem.task ].concat(elem["counts"]).concat(elem["total"])
       return row;
     });
@@ -333,6 +334,17 @@ function draw_kvm_exits(scope) {
 
 // ----- CPU Usage and Context Switches
 function draw_cpusw(scope) {
+    var task_list = task_data.map(function(d) { return d.task; });
+    var margin = {top: 30, right: 20, bottom: 40, left: get_text_width(task_list)+15};
+    var total_height = get_total_height(task_list.length, margin, 280);
+    var width = total_width - margin.left - margin.right;
+    var height = total_height - margin.top - margin.bottom;
+    var y = d3.scale.ordinal()
+        .rangeRoundBands([height, 0], 0.1).
+        domain(task_list);
+    var yAxis = d3.svg.axis()
+        .scale(y)
+        .orient("left");
     var xcpu = d3.scale.linear()
         .rangeRound([0, width - 120]);
     var xsw = d3.scale.linear()
@@ -345,24 +357,21 @@ function draw_cpusw(scope) {
         .scale(xsw)
         .orient("bottom")
         .tickFormat(d3.format(".2s"));
-
     var svg = d3.select("#svg-cpu")
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", height + margin.top + margin.bottom)
                 .append("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
-    y.domain(task_data.map(function(d) { return d.task; }));
-    var max_sw = d3.max(task_data, function(d) { return d.sw; })
-    var round_unit = Math.pow(10, Math.round(Math.log10(max_sw)))
+    var max_sw = d3.max(task_data, function(d) { return d.sw; });
+    var round_unit = Math.pow(10, Math.round(Math.log10(max_sw)));
     max_sw = Math.max(10, Math.ceil(max_sw/round_unit)*round_unit);
     xcpu.domain([0, 1]);
     xsw.domain([0, max_sw]);
     var sw_color = "#cb181d"; // red
     // get a set of all starting (max) 3 letter strings for task names
-    var task_color_keys = task_data.map(function(d) { return d.task.substring(0, 3); })
+    var task_color_keys = task_list.map(function(d) { return d.substring(0, 3); })
     var task_color_key = d3.scale.ordinal().domain(task_color_keys).range(d3.range(20));
-    var task_color = d3.scale.category20()
+    var task_color = d3.scale.category20();
     var axis = svg.append("g")
         .attr("class", "x axis")
         .call(xCpuAxis);
@@ -395,11 +404,9 @@ function draw_cpusw(scope) {
         .attr("cy", -4)
         .style("opacity", 0.6)
         .style("fill", sw_color);
-
     svg.append("g")
         .attr("class", "y axis")
         .call(yAxis);
-
     [0.5, 1].forEach(function (pct) { draw_vert_line(svg, xcpu(pct), 0, height, grid_color); });
 
     var state = svg.selectAll(".g")
@@ -435,17 +442,16 @@ function draw_cpusw(scope) {
                 .style("opacity", 0);
             d3.select(this).style("opacity", 0.4);
         });
-    state
-        .append("rect")
-        .attr("height", 1)
-        .attr("x", 0)
-        .attr("y", (y.rangeBand()/2))
-        .attr("width", function(d) { return Math.max(0, xsw(d.sw) - 6); })
-        .style("opacity", 0.9)
-        .style("fill", sw_color);
+    var radius = 6;
+    state.append("line").attr({
+            y1:y.rangeBand()/2,
+            x2:function(d) { return Math.max(0, xsw(d.sw) - radius); },
+            y2:y.rangeBand()/2,
+            'stroke-width':1,
+            stroke:sw_color});
     state
         .append("circle")
-        .attr("r", 6)
+        .attr("r", radius)
         .attr("cx", function(d) { return xsw(d.sw); })
         .attr("cy", (y.rangeBand()/2))
         .style("opacity", 0.9)
@@ -471,36 +477,39 @@ function draw_cpusw(scope) {
 
 // ----- Coremap
 function draw_coremap(scope) {
-    if (coremap_state[scope.coremap_index]) {
+    if (scope.coremap_state[scope.coremap_index]) {
         return;
     }
-    coremap_state[scope.coremap_index] = true;
+    scope.coremap_state[scope.coremap_index] = true;
     var coremap = coremaps[scope.coremap_index];
-    var x = d3.scale.ordinal()
-        .rangeBands([0, width], 0.01, 0.01);
-    var xAxis = d3.svg.axis()
-        .scale(x)
-        .orient("bottom");
-    // shadowing the global variables as the height and width is special for coremaps
-    var margin = {top: 30, right: task_max_px, bottom: 40, left: task_max_px};
     var task_list = coremap.stats.map(function(d) { return d.task; });
-    var total_height = 40 + task_list.length * 20 + margin.top + margin.bottom;
+
+    // shadowing the global variables as the height and width is special for coremaps
+    var hor_margin = get_text_width(task_list)+15;
+    var margin = {top: 30, right: hor_margin, bottom: 40, left: hor_margin};
+    var total_height = get_total_height(task_list.length, margin, 0);
+    var width = total_width - margin.left - margin.right;
     var height = total_height - margin.top - margin.bottom;
     var y = d3.scale.ordinal()
-        .rangeBands([height, 0], 0.01, 0.05);
+        .rangeBands([height, 0], 0.01, 0.05)
+        .domain(task_list);
     var yAxis = d3.svg.axis()
         .scale(y)
         .orient("left");
+    var xrange = d3.range(max_cores);
+    var x_label_allcores = '0-' + (max_cores-1);
+    xrange.push(x_label_allcores);
+    var x = d3.scale.ordinal()
+        .rangeBands([0, width], 0.01, 0.01)
+        .domain(xrange);
+    var xAxis = d3.svg.axis()
+        .scale(x)
+        .orient("bottom");
     var svg = d3.select("#svg-coremap"+scope.coremap_index)
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", total_height)
                 .append("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-    var xrange = d3.range(max_cores);
-    var x_label_allcores = '0-' + (max_cores - 1);
-    xrange.push(x_label_allcores);
-    y.domain(task_list);
-    x.domain(xrange);
     var axis = svg.append("g")
         .attr("class", "x axis")
         .attr("transform", "translate(0," + height + ")")
@@ -592,14 +601,14 @@ var modes = [
     {title:"KVM Exit count by type", icon:"log-out", svg:"kvm_exits", init:draw_kvm_exits},
     {title:"CoreMap", icon:"equalizer", svg:"coremap", init:draw_coremap}
 ];
-var coremap_state = coremaps.map(function(d) { return false; });
 app.config(['$interpolateProvider', function($interpolateProvider) {
   $interpolateProvider.startSymbol('{[');
   $interpolateProvider.endSymbol(']}');
 }]);
 app.controller('PwCtrl', PwCtrl);
 function PwCtrl($scope) {
-    $scope.current_index = 0
+    $scope.coremap_state = coremaps.map(function(d) { return false; });
+    $scope.current_index = 0;
     $scope.modes = modes;
     $scope.handleEvent = function(event, index) {
         $scope.current_index = index;

@@ -208,7 +208,7 @@ def convert_exit_df(df, label):
 '''
 
 
-def get_kvm_exit_data(dfds, cap_time_usec, task_re):
+def get_swkvm_data(dfds, cap_time_usec, task_re):
 
     # calculate the total cpu and total context switches per task
     cpu_sw_map = get_cpu_sw_map(dfds, cap_time_usec, task_re)
@@ -220,7 +220,6 @@ def get_kvm_exit_data(dfds, cap_time_usec, task_re):
     if df.empty:
         print 'Error: No kvm traces matching ' + task_re
         return
-
     df.drop(['cpu', 'duration', 'event', 'next_pid', 'pid', 'usecs'], inplace=True, axis=1)
 
     # Get the list of exit reason codes, sorted numerically
@@ -278,16 +277,23 @@ def get_kvm_exit_data(dfds, cap_time_usec, task_re):
         # add the total to the count list
         try:
             cpu, sw = cpu_sw_map[task_name]
+            cpu_sw_map.pop(task_name)
         except KeyError:
             # this task has no context switch no cpu, so likely is
             # using up all the cpu
-            print 'keyerror:' + task_name
             cpu = 100
             sw = 1
         task_list.append({'name': task_name,
                           'exit_count': str(exit_count_list),
                           'cpu': round(cpu, 1),
-                          'sw': sw})
+                          'sw': int(sw)})
+    # Add stats for those tasks that do not have any KVM exits
+    for task_name in cpu_sw_map:
+        cpu, sw = cpu_sw_map[task_name]
+        task_list.append({'name': task_name,
+                          'exit_count': [],
+                          'cpu': round(cpu, 1),
+                          'sw': int(sw)})
 
     # get in reverse order so we display them top to bottom on a
     # horizontal stacked bar chart

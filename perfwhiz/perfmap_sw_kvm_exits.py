@@ -182,18 +182,25 @@ def get_sw_kvm_events(dfd, task_re):
     '''
     :param df:
     :param task_re:
-    :return: [
-        { "task": "task10",
-          "events": [
-            {"kvm_exit": [ [0,1,30], [20, 421, 30], ...],
-             "kvm_entry": [],
-             ...
-          ]}, ...
-    ]
+    :return:
+        { "usecs_min": 129,
+          "usecs_max": 1873291,
+          "usecs_duration_max": 287312,
+          "task_events": [
+             {"task": "CSR",
+              "events":
+                { "kvm_exit": [ [0,1,30], [20, 421, 30], ...],
+                  "kvm_entry": [],
+                  "sched__sched_switch": [],
+                  "sched__sched_stat_sleep": []
+                }
+             },...
+          ]
+        }
+
     '''
     gb = get_groupby(dfd.df, task_re)
     nb_tasks = len(gb.groups)
-
     if nb_tasks == 0:
         raise RuntimeError('No selection matching: ' + task_re)
     sw_kvm_events = {}
@@ -227,5 +234,5 @@ def get_sw_kvm_events(dfd, task_re):
     return {'task_events': task_event_list,
             'usecs_min': dfd.from_usec,
             'usecs_max': dfd.to_usec,
-            'duration_max': duration_max}
+            'usecs_duration_max': duration_max}
 

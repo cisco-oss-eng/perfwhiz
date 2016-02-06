@@ -31,7 +31,7 @@ from perfmap_common import set_html_file
 from perfmap_common import DfDesc
 from perfmap_common import output_svg_html
 from perfmap_core import get_coremaps
-from perfmap_kvm_exit_types import get_kvm_exit_data
+from perfmap_kvm_exit_types import get_swkvm_data
 from perfmap_sw_kvm_exits import show_sw_kvm_heatmap, get_sw_kvm_events
 
 from jinja2 import Environment
@@ -155,7 +155,7 @@ def get_tpl(tpl_file):
 
 def create_charts(dfds, cap_time_usec, task_re, label):
     coremaps = get_coremaps(dfds, cap_time_usec, task_re)
-    task_list, exit_reason_list, colormap_list = get_kvm_exit_data(dfds, cap_time_usec, task_re)
+    task_list, exit_reason_list, colormap_list = get_swkvm_data(dfds, cap_time_usec, task_re)
     tpl = get_tpl('perfmap_charts.jinja')
     svg_html = tpl.render(exit_reason_list=str(exit_reason_list),
                           task_list=task_list,
@@ -198,10 +198,10 @@ def main():
                       metavar="task name (regex)",
                       help="selected task(s) (regex on task name)"
                       )
-    parser.add_option("--core-locality",
-                      dest="core_locality",
+    parser.add_option("--heatmaps",
+                      dest="heatmaps",
                       action="store_true",
-                      help="show core locality heat map (requires --task)"
+                      help="show context switch, kvm exits and core locality heat map (requires --task)"
                       )
     parser.add_option("--switches",
                       dest="switches",
@@ -338,8 +338,12 @@ def main():
     if not options.task:
         print '--task <task_regex> is required'
         sys.exit(1)
+    # A common mistake is to forget the head "." before a star ("*.vcpu0")
+    # Better detect and fix to avoid frustration
+    if options.task.startswith("*"):
+        options.task = "." + options.task
 
-    if options.core_locality:
+    if options.heatmaps:
         create_heatmaps(dfds[0], cap_time, options.task, options.label)
         sys.exit(0)
 

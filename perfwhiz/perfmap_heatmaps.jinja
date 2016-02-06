@@ -58,7 +58,7 @@ th {
 }
 </style>
 </head>
-<body ng-app="pw-heatmaps" ng-controller="PwHeatMapsCtrl">
+<body ng-app="pw-heatmaps" ng-controller="PwHeatMapsCtrl" ng-cloak>
 
 <nav class="navbar navbar-default navbar-fixed-top">
   <div class="container-fluid">
@@ -68,7 +68,8 @@ th {
            <ul class="nav navbar-nav">
                 <li ng-repeat="mode in modes" ng-class="{active: current_index==$index}"
                     ng-click="handleEvent($event, $index)">
-                    <a href="#">{[mode.title]}</a>
+                    <a href="#"><span class="glyphicon glyphicon-{[mode.icon]}" aria-hidden="true"></span>
+                    &nbsp;{[mode.title]}</a>
                 </li>
           </ul>
       </div>
@@ -76,16 +77,24 @@ th {
 </nav>
 
 <div class="container-fluid">
-    <h1><span class="glyphicon glyphicon-{[current_mode.icon]}" aria-hidden="true"></span> {[current_mode.title]}
+    <h1>{[current_mode.title]}
+     <div class="btn-group" uib-dropdown keyboard-nav ng-show="current_index == 0">
+        <button id="simple-btn-keyboard-nav" type="button" class="btn btn-primary" uib-dropdown-toggle>
+            {[task_list[task_index]]} <span class="caret" ng-show="task_list.length>1"></span>
+        </button>
+        <ul uib-dropdown-menu role="menu" aria-labelledby="simple-btn-keyboard-nav">
+            <li ng-hide="task_index==$index" ng-repeat="task in task_list" role="menuitem" ng-click="selectTask($event, $index)"><a href="#">{[task]}</a></li>
+        </ul>
+     </div>
      <small>{{info.label}} ({{info.window}} msec window)</small></h1>
 </div>
 <div class="container-fluid" ng-show="current_index == 0">
-    <svg id="svg-coreloc" initsvg></svg>
-    <svg id="svg-coreloc-legend"></svg>
+    <svg ng-repeat="task in task_list" id="svg-swkvm{[$index]}" ng-show="task_index==$index" initsvg></svg>
 </div>
 <div class="container-fluid" ng-show="current_index == 1">
-    <svg id="svg-swkvm"></svg>
+    <svg id="svg-coreloc"></svg>
 </div>
+
 <br><br>
 <div class="container-fluid">
   <small>
@@ -98,44 +107,21 @@ var max_cores = {{info.max_cores}};
 var swk_events = {{swk_events}};
 
 var total_width = 1100;
-var grid_color = "#bbbbbb";
+var total_height = 800;
 
 // Generic code below
 var div = d3.select("body").append("div")
     .attr("class", "tooltip")
     .style("opacity", 0);
-var total_height = 800;
 
 // approximate left margin required based on longest task name
-var margin = {top: 30, right: 30, bottom: 40, left: 30},
+var margin = {top: 30, right: 30, bottom: 50, left: 50},
     width = total_width - margin.left - margin.right,
     height = total_height - margin.top - margin.bottom;
 
-var y = d3.scale.ordinal()
-    .rangeRoundBands([height, 0], 0.1);
-
-var yAxis = d3.svg.axis()
-    .scale(y)
-    .orient("left");
-
-function draw_line(svg, x1, y1, x2, y2, color) {
-    svg.append("line")
-        .attr("x1", x1)
-        .attr("y1", y1)
-        .attr("x2", x2)
-        .attr("y2", y2)
-        .attr("stroke-width", 1)
-        .attr("stroke", color);
-}
-function draw_vert_line(svg, x, y1, y2, color) {
-    draw_line(svg, x, y1, x, y2, color);
-}
-function draw_hor_line(svg, x1, x2, y, color) {
-    draw_line(svg, x1, y, x2, y, color);
-}
-function get_legend_text_width(text_list) {
+function get_text_width(text_list) {
     // a fake svg to calculate max rendered width
-    var tmp_svg = d3.select("body").append("svg").attr("width", 1000).attr("height", 400);
+    var tmp_svg = d3.select("body").append("svg").attr("width", 1000).attr("height", 1000);
     var tmp_lg = tmp_svg.append("g").attr("class", "g");
     var max_width = 0;
     tmp_lg.selectAll("text")
@@ -144,20 +130,19 @@ function get_legend_text_width(text_list) {
         .text(function (d, i) { return d;});
     tmp_lg.selectAll("text")
         .each(function() {
-          max_width = Math.max(this.getBBox().width, max_width);
+            max_width = Math.max(this.getBBox().width, max_width);
         });
     tmp_svg.remove();
     return max_width;
 }
-
-function draw_legend(svg, text_list, color_list, width, align, margin, columns) {
+function draw_legend(svg, text_list, color_list, width, align, margin, columns, shape, opacity) {
     var inner_margin = 5;
     var color_rect_size = 18;
     var inner_gap = 2;
     var row_height = color_rect_size + inner_gap;
     // calculate the width of the legend box
     var count = text_list.length;
-    var col_width = get_legend_text_width(text_list) + color_rect_size + inner_gap * 2;
+    var col_width = get_text_width(text_list) + color_rect_size + inner_gap * 2;
     columns = Math.min(count, columns);
     var lb_width = (col_width * columns) + 2 * inner_margin;
     // calculate the x coordinates of the legend box based
@@ -191,175 +176,99 @@ function draw_legend(svg, text_list, color_list, width, align, margin, columns) 
                     (inner_margin + col_width * Math.floor(i/count_per_column)) +
                     "," +
                     (inner_margin + row_height * (i % count_per_column)) + ")"; });
-    legend.append("rect")
-        .attr("width", color_rect_size)
-        .attr("height", color_rect_size)
-        .style("opacity", 0.8)
-        .style("fill", function(d, i) { return d; });
+    if (shape == "circle") {
+        legend.append("circle")
+            .attr("cx", color_rect_size/2)
+            .attr("cy", color_rect_size/2)
+            .attr("r", color_rect_size/3)
+            .style("opacity", opacity)
+            .style("fill", function(d, i) { return d; });
+    } else {
+        legend.append("rect")
+            .attr("width", color_rect_size)
+            .attr("height", color_rect_size)
+            .style("opacity", opacity)
+            .style("fill", function(d, i) { return d; });
+    }
     legend.append("text")
         .attr('class','legend')
         .attr("x", row_height)
         .attr("dy", "1.2em")
         .style("text-anchor", "start")
         .text(function(d, i) { return text_list[i]; });
-    var max_width = get_legend_text_width(text_list);
 }
 // ----- KVM EXIT TYPES COUNT CHART
-function get_text_width(text_list) {
-    // a fake svg to calculate max rendered width
-    var tmp_svg = d3.select("body").append("svg").attr("width", 1000).attr("height", 400);
-    var tmp_lg = tmp_svg.append("g").attr("class", "g");
-    var max_width = 0;
-    tmp_lg.selectAll("text")
-        .data(text_list)
-        .enter().append("text")
-        .text(function (d, i) { return d;});
-    tmp_lg.selectAll("text")
-        .each(function() {
-          max_width = Math.max(this.getBBox().width, max_width);
-        });
-    tmp_svg.remove();
-    return max_width;
-}
 
 // ----- Context Switches and KVM events heatmaps
 function draw_swkvm(scope) {
-/*
-    var xcpu = d3.scale.linear()
-        .rangeRound([0, width - 120]);
-    var xsw = d3.scale.linear()
-        .rangeRound([0, width - 120]);
-    var xCpuAxis = d3.svg.axis()
-        .scale(xcpu)
-        .orient("top")
-        .tickFormat(d3.format("%"));
-    var xSwAxis = d3.svg.axis()
-        .scale(xsw)
+    if (scope.task_state[scope.task_index]) {
+        return;
+    }
+    scope.task_state[scope.task_index] = true;
+    var x = d3.scale.linear()
+        .range([0, width])
+        .domain([swk_events.usecs_min, swk_events.usecs_max]);
+    var xAxis = d3.svg.axis()
+        .scale(x)
         .orient("bottom")
-        .tickFormat(d3.format(".2s"));
-
-    var svg = d3.select("#svg-cpu")
+        .tickFormat(usec_format)
+        .tickSize(-height, 0, 0);
+    var y = d3.scale.log()
+        .range([height, 0])
+        .domain([1, swk_events.usecs_duration_max]).nice();
+    var yAxis = d3.svg.axis()
+        .scale(y)
+        .tickFormat(usec_format)
+        .tickSize(-width, 0, -width)
+        .orient("left");
+    var svg = d3.select("#svg-swkvm"+scope.task_index)
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", height + margin.top + margin.bottom)
                 .append("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
-    y.domain(task_data.map(function(d) { return d.task; }));
-    var max_sw = d3.max(task_data, function(d) { return d.sw; })
-    var round_unit = Math.pow(10, Math.round(Math.log10(max_sw)))
-    max_sw = Math.max(10, Math.ceil(max_sw/round_unit)*round_unit);
-    xcpu.domain([0, 1]);
-    xsw.domain([0, max_sw]);
-    var sw_color = "#cb181d"; // red
-    // get a set of all starting (max) 3 letter strings for task names
-    var task_color_keys = task_data.map(function(d) { return d.task.substring(0, 3); })
-    var task_color_key = d3.scale.ordinal().domain(task_color_keys).range(d3.range(20));
-    var task_color = d3.scale.category20()
-    var axis = svg.append("g")
-        .attr("class", "x axis")
-        .call(xCpuAxis);
-    axis
-        .append("text")
-        .attr("x", width - 24)
-        .style("text-anchor", "end")
-        .text("% one core");
-    axis
-        .append("rect")
-        .attr("x", width - 20)
-        .attr("y", -18)
-        .attr("width", 20)
-        .attr("height", 20)
-        .style("opacity", 0.8)
-        .style("fill", task_color(0));
-    axis = svg.append("g")
+    var xaxis = svg.append("g")
         .attr("class", "x axis")
         .attr("transform", "translate(0," + height + ")")
-        .call(xSwAxis);
-    axis
+        .call(xAxis)
         .append("text")
-        .attr("x", width - 24)
-        .style("text-anchor", "end")
-        .text("context switches");
-    axis
-        .append("circle")
-        .attr("r", 6)
-        .attr("cx", width - 14)
-        .attr("cy", -4)
-        .style("opacity", 0.6)
-        .style("fill", sw_color);
-
-    svg.append("g")
+        .append("text")
+        .attr("x", width-28)
+        .attr("dy", "2em")
+        .style("text-anchor", "middle")
+        .text("time");
+    var yaxis = svg.append("g")
         .attr("class", "y axis")
-        .call(yAxis);
-
-    [0.5, 1].forEach(function (pct) { draw_vert_line(svg, xcpu(pct), 0, height, grid_color); });
-
-    var state = svg.selectAll(".g")
-        .data(task_data)
+        .call(yAxis)
+        .append("text")
+          .attr("y", -10)
+          .style("text-anchor", "middle")
+          .text("duration");
+    var task_event = swk_events.task_events[scope.task_index];
+    // create one g container per event type
+    // reformat data structures in a way that makes d3 work simpler
+    var sw_g = svg.append("g").attr("class", "g").attr("id", "sw");
+    var sw_data = [
+       {id:"run", desc:"end of run", events:task_event.events['sched__sched_switch'], color:"blue", hidden:false},
+       // {id: "sleep", desc:"end of sleep", events:task_event.events['sched__sched_stat_sleep'], color:"red", hidden:true}
+    ]
+    var state = sw_g.selectAll(".state")
+        .data(sw_data)
         .enter().append("g")
         .attr("class", "g")
-        .attr("transform", function(d) { return "translate(0, " + y(d.task) + ")"; });
-    state
-        .append("rect")
-        .attr("height", y.rangeBand())
-        .attr("x", 0)
-        .attr("width", function(d) { return xcpu(d.cpu/100); })
-        .style("opacity", 0.4)
-        .style("fill", function(d) { return task_color(task_color_key(d.task.substring(0,3)));})
-        .on("mouseover", function(d) {
-            div.transition()
-                .duration(200)
-                .style("opacity", 0.8);
-            var matrix = this.getScreenCTM()
-                .translate(+this.getAttribute("cx"),
-                           +this.getAttribute("cy"));
-            div	.html('<ul class="list-group"><li class="list-group-item"><b>' +  d.task + '</b><br>one core usage&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d.cpu + '%</span></li>')
-                .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 40) + "px")
-                .style("left", (d3.event.pageX) + "px");
-            d3.select(this).style("opacity", 1);
-        })
-        .on("mousemove", function(d) {
-            div	.style("left", (d3.event.pageX) + "px");
-        })
-        .on("mouseout", function(d) {
-            div.transition()
-                .duration(500)
-                .style("opacity", 0);
-            d3.select(this).style("opacity", 0.4);
-        });
-    state
-        .append("rect")
-        .attr("height", 1)
-        .attr("x", 0)
-        .attr("y", (y.rangeBand()/2))
-        .attr("width", function(d) { return Math.max(0, xsw(d.sw) - 6); })
-        .style("opacity", 0.9)
-        .style("fill", sw_color);
-    state
-        .append("circle")
-        .attr("r", 6)
-        .attr("cx", function(d) { return xsw(d.sw); })
-        .attr("cy", (y.rangeBand()/2))
-        .style("opacity", 0.9)
-        .style("fill", sw_color)
-        .on("mouseover", function(d) {
-            div.transition()
-                .duration(100)
-                .style("opacity", 1);
-            var matrix = this.getScreenCTM()
-                .translate(+this.getAttribute("cx"),
-                           +this.getAttribute("cy"));
-            div	.html('<ul class="list-group"><li class="list-group-item"><b>' +  d.task + '</b><br>context switches &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="badge">'+ d.sw + '</span></li>')
-                .style("top", (window.pageYOffset + matrix.f + y.rangeBand()/2 - 50) + "px")
-                .style("left", (d3.event.pageX) + "px");
-        })
-        .on("mouseout", function(d) {
-            div.transition()
-                .duration(500)
-                .style("opacity", 0);
-            d3.select(this).style("opacity", 0.9);
-        });
-*/
+        .attr("ng-hide", function(d){return "hide"+d.id})
+        .attr("id", function(d) {return d.id;});
+    state.selectAll("circle")
+      .data(function(d) { return d.events; })
+    .enter().append("circle")
+        .attr("cx", function(d) {return x(d[0]);})
+        .attr("cy", function(d) {return y(d[1]);})
+        .attr("r", 4)
+        .style("fill", function(d) {return this.parentNode.__data__.color;})
+        .style("opacity", 0.2);
+    draw_legend(svg,
+        sw_data.map(function(d){return d.desc + " (" + d.events.length + ")"}),
+        sw_data.map(function(d){return d.color}),
+        width, "right", 0, 5, "circle", 0.2)
 }
 
 function draw_right_arrow(node, x, y, h, w, color) {
@@ -430,7 +339,7 @@ function draw_coreloc(scope) {
         .scale(y)
         .orient("right")
         .tickSize(0, 0, 0);
-    var axis = svg.append("g")
+    axis = svg.append("g")
         .attr("class", "y axis")
         .attr("transform", "translate(" + (width) + ",0)")
         .call(yAxis2);
@@ -449,8 +358,11 @@ function draw_coreloc(scope) {
         .attr("x", function(d) { var x0 = x((d[0] - d[1])); if (x0 < 0) { x0 = 0;} return x0;})
         .attr("y", function(d) { return y(d[2]) + y_offset;})
         .attr("height", event_height)
-        .attr("width", function(d) { var x0 = x((d[0] - d[1])); if (x0 < 0) { x0 = 0;}  return x(d[0]) - x0;})
-        .style("opacity", 0.5)
+        .attr("width", function(d) {
+            var x0 = x((d[0] - d[1]));
+            var x1 = x(d[0]);
+            if (x0 < 0) { return x1;} return x1 - x0;})
+        .style("opacity", 0.8)
         .style("fill", function(d) { return this.parentNode.__data__.color;})
         .on("mouseover", function(d) {
             div.transition()
@@ -471,19 +383,19 @@ function draw_coreloc(scope) {
             div.transition()
                 .duration(500)
                 .style("opacity", 0);
-            d3.select(this).style("opacity", 0.5);
+            d3.select(this).style("opacity", 0.8);
         });
     var text_list = swk_events.task_events.map(function(d) {return d.task;});
     var color_list = swk_events.task_events.map(function(d, i) {return get_task_color(i);});
-    var lg_svg = d3.select("#svg-coreloc-legend")
-                        .attr("width", width + margin.left + margin.right);
-    draw_legend(lg_svg, text_list, color_list, width, "center", 0, 5)
+    var lg_svg = svg.append("g")
+        .attr("transform", "translate(0, " + (height+20) + ")")
+    draw_legend(lg_svg, text_list, color_list, width, "center", 0, 5, "square", 0.5)
 }
 
 var app = angular.module('pw-heatmaps', ['ui.bootstrap']);
 var modes = [
+    {title:"Context switches", icon:"random", svg:"swkvm", init:draw_swkvm},
     {title:"Core locality over time", icon:"globe", svg:"coreloc", init:draw_coreloc},
-//    {title:"Context switches and KVM events Heatmap", icon:"option-horizontal", svg:"swkvm", init:draw_swkvm}
 ];
 app.config(['$interpolateProvider', function($interpolateProvider) {
   $interpolateProvider.startSymbol('{[');
@@ -512,8 +424,11 @@ app.directive('initsvg', function() {
 function PwHeatMapsCtrl($scope) {
     $scope.task_list = swk_events.task_events.map(function(d) { return d.task; });
     $scope.coreloc_state = $scope.task_list.map(function(d) { return false; });
-    $scope.current_index = 0
-
+    $scope.current_index = 0;
+    $scope.task_index = 0;
+    $scope.task_state = $scope.task_list.map(function(d) { return false; });
+    $scope.hiderun = false;
+    $scope.hidesleep = true
     $scope.modes = modes;
     $scope.handleEvent = function(event, index) {
         $scope.current_index = index;
@@ -523,6 +438,10 @@ function PwHeatMapsCtrl($scope) {
             initf($scope);
             $scope.current_mode['init'] = null;
         }
+    };
+    $scope.selectTask = function(event, index) {
+        $scope.task_index = index;
+        draw_swkvm($scope);
     };
 }
 </script>

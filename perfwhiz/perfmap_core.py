@@ -212,6 +212,8 @@ def get_cpu_sw_map(dfds, cap_time_usec, task_re):
 
         if dfd.multiplier > 1.0:
             dfsw['count'] = (dfsw['count'] * dfd.multiplier).astype(int)
+        else:
+            dfsw['count'] = dfsw['count'].astype(int)
         dfsw_list.append(dfsw)
 
     df = pandas.concat(df_list)
