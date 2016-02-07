@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/1.1.1/ui-bootstrap.min.js"></script>
 <script src="https://cdn.datatables.net/1.10.10/js/jquery.dataTables.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.6/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/0.2.8/pako_inflate.min.js"></script>
 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width">
@@ -103,21 +104,14 @@ th {
 </div>
 
 <script>
-var max_cores = {{info.max_cores}};
-var swk_events = {{swk_events}};
 
-var total_width = 1100;
-var total_height = 800;
-
-// Generic code below
 var div = d3.select("body").append("div")
     .attr("class", "tooltip")
     .style("opacity", 0);
-
-// approximate left margin required based on longest task name
-var margin = {top: 30, right: 30, bottom: 50, left: 50},
-    width = total_width - margin.left - margin.right,
-    height = total_height - margin.top - margin.bottom;
+var si_fmt = d3.format("s");
+function usec_format(usec) {
+    return si_fmt(usec/1000000)+"s";
+}
 
 function get_text_width(text_list) {
     // a fake svg to calculate max rendered width
@@ -196,15 +190,24 @@ function draw_legend(svg, text_list, color_list, width, align, margin, columns, 
         .attr("dy", "1.2em")
         .style("text-anchor", "start")
         .text(function(d, i) { return text_list[i]; });
+    return lb_height;
 }
-// ----- KVM EXIT TYPES COUNT CHART
 
 // ----- Context Switches and KVM events heatmaps
+var swk_events = '{{swk_events}}';
+swk_events = JSON.parse(pako.inflate(window.atob(swk_events), {to:'string'}));
+
 function draw_swkvm(scope) {
     if (scope.task_state[scope.task_index]) {
         return;
     }
     scope.task_state[scope.task_index] = true;
+    var total_width = 1100;
+    var total_height = 800;
+    // approximate left margin required based on longest task name
+    var margin = {top: 30, right: 30, bottom: 50, left: 50},
+        width = total_width - margin.left - margin.right,
+        height = total_height - margin.top - margin.bottom;
     var x = d3.scale.linear()
         .range([0, width])
         .domain([swk_events.usecs_min, swk_events.usecs_max]);
@@ -216,7 +219,6 @@ function draw_swkvm(scope) {
     var y = d3.scale.log()
         .range([height, 0])
         .domain([1, swk_events.usecs_duration_max]);
-//        .domain([1, swk_events.usecs_duration_max]).nice();
     var yAxis = d3.svg.axis()
         .scale(y)
         .tickFormat(usec_format)
@@ -288,10 +290,7 @@ function draw_right_arrow(node, x, y, h, w, color) {
         .style("stroke-width", 3)
         .style("fill", color);
 }
-var si_fmt = d3.format("s");
-function usec_format(usec) {
-    return si_fmt(usec/1000000)+"s";
-}
+
 var color = d3.scale.category20();
 function get_task_color(index) {
     return color(index % 20);
@@ -299,6 +298,13 @@ function get_task_color(index) {
 
 // ----- Coremap
 function draw_coreloc(scope) {
+    var max_cores = {{info.max_cores}};
+    var total_width = 1100;
+    var total_height = 800;
+    // approximate left margin required based on longest task name
+    var margin = {top: 30, right: 30, bottom: 30, left: 50},
+        width = total_width - margin.left - margin.right,
+        height = total_height - margin.top - margin.bottom;
     var x = d3.scale.linear()
         .range([0, width]);
     var xAxis = d3.svg.axis()
@@ -319,7 +325,6 @@ function draw_coreloc(scope) {
 
     var svg = d3.select("#svg-coreloc")
                 .attr("width", width + margin.left + margin.right)
-                .attr("height", total_height)
                 .append("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
     var axis = svg.append("g")
@@ -391,14 +396,18 @@ function draw_coreloc(scope) {
     var color_list = swk_events.task_events.map(function(d, i) {return get_task_color(i);});
     var lg_svg = svg.append("g")
         .attr("transform", "translate(0, " + (height+20) + ")")
-    draw_legend(lg_svg, text_list, color_list, width, "center", 0, 5, "square", 0.5)
+    var legend_height = draw_legend(lg_svg, text_list, color_list, width, "center", 0, 5, "square", 0.5)
+    d3.select("#svg-coreloc")
+                .attr("height", total_height + legend_height);
 }
 
+/* ---------------------------------------- */
 var app = angular.module('pw-heatmaps', ['ui.bootstrap']);
 var modes = [
     {title:"Context switches", icon:"random", svg:"swkvm", init:draw_swkvm},
     {title:"Core locality over time", icon:"globe", svg:"coreloc", init:draw_coreloc},
 ];
+
 app.config(['$interpolateProvider', function($interpolateProvider) {
   $interpolateProvider.startSymbol('{[');
   $interpolateProvider.endSymbol(']}');
@@ -424,14 +433,9 @@ app.directive('initsvg', function() {
 });
 
 function PwHeatMapsCtrl($scope) {
-    $scope.task_list = swk_events.task_events.map(function(d) { return d.task; });
-    $scope.coreloc_state = $scope.task_list.map(function(d) { return false; });
-    $scope.current_index = 0;
-    $scope.task_index = 0;
-    $scope.task_state = $scope.task_list.map(function(d) { return false; });
-    $scope.hiderun = false;
-    $scope.hidesleep = true
+
     $scope.modes = modes;
+    $scope.current_index = 0;
     $scope.handleEvent = function(event, index) {
         $scope.current_index = index;
         $scope.current_mode = $scope.modes[index];
@@ -441,6 +445,9 @@ function PwHeatMapsCtrl($scope) {
             $scope.current_mode['init'] = null;
         }
     };
+    $scope.task_index = 0;
+    $scope.task_list = swk_events.task_events.map(function(d) { return d.task; });
+    $scope.task_state = $scope.task_list.map(function(d) { return false; });
     $scope.selectTask = function(event, index) {
         $scope.task_index = index;
         draw_swkvm($scope);

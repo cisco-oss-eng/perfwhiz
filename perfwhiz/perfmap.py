@@ -39,6 +39,8 @@ from jinja2 import FileSystemLoader
 import time
 from __init__ import __version__
 from pkg_resources import resource_filename
+import zlib
+import base64
 
 # Global variables
 output_chart = None
@@ -164,11 +166,14 @@ def create_charts(dfds, cap_time_usec, task_re, label):
                           info=get_info(dfds[0], label))
     output_svg_html(svg_html, 'charts', task_re)
 
+import json
 def create_heatmaps(dfd, cap_time_usec, task_re, label):
     swk_events = get_sw_kvm_events(dfd, task_re)
 
     tpl = get_tpl('perfmap_heatmaps.jinja')
-    svg_html = tpl.render(swk_events=str(swk_events),
+    json_swk = json.dumps(swk_events, separators=(',',':'))
+    b64_zlib = base64.b64encode(zlib.compress(json_swk))
+    svg_html = tpl.render(swk_events=b64_zlib,
                           info=get_info(dfd, label))
     output_svg_html(svg_html, 'heatmaps', task_re)
 

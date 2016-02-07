@@ -8,10 +8,12 @@ generating from the perf traces 2 HTML dashboards that represent Linux scheduler
 and KVM events.
 
 The basic dashboard illustrates general scheduler and KVM events for all tasks selected at capture time:
+
 - KVM exit types distribution stacked bar charts (exit type distribution per task)
 - task scheduler core assignment and context switch count heat maps (run time % and context switch count on each core per task - including total time per core and per task)
 
 The detailed dashboard illustrates detailed scheduler and KVM events at the task level:
+
 - context switch heat maps (temporal distribution of context switch events)
 - KVM exit heat maps (temporal distribution of kvm entry and exit events)
 - Coremaps (on which core does any given task run over time)
@@ -23,7 +25,8 @@ The capture script wraps around the Linux perf tool to capture events of
 interest (such as context switches and kvm events) and generates a much more
 compact binary file to be used for analysis offline.
 
-Complete documentation including installation and usage instructions:
+Complete documentation including installation and usage instructions::
+
  `<http://perfwhiz.readthedocs.org/en/latest/>`_
 
 
@@ -46,22 +49,26 @@ Dependencies
 Dependencies are automatically installed when perfwhiz is being installed (refer to the Installation section).
 
 The capture tool perfcap.py depends on:
+
 - the Linux perf tool (compiled with the python extension)
 - pbr python package
 - msgpack python package
 
 The dashboard generation tool perfmap.py depends on:
+
 - pandas/numpy python package
 
 The generated HTML dashboards contain Javascript code that will pull some Javascript libraries from CDN servers
 when loaded in the browser (CDN is a public network of servers that contain libraries that are downloaded by browsers).
 Therefore, viewing those dashboards require access to the Internet.
 The following Javascript libraries are required by the dashboards:
+
 - jquery
 - datatables
 - d3
 - angular
 - angular-ui-bootstrap
+- pako (zlib inflate)
 
 
 Licensing
