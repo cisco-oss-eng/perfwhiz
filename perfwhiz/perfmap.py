@@ -192,11 +192,11 @@ def main():
                       dest="successor_of_task",
                       help="show list of successors of given tid or task name"
                       )
-    parser.add_option("--show-tids",
-                      dest="show_tids",
+    parser.add_option("--list",
+                      dest="list",
                       action="store_true",
                       default=False,
-                      help="show list of all tids with event count)"
+                      help="show list of all tasks with event count"
                       )
     parser.add_option("-t", "--task",
                       dest="task",
@@ -324,7 +324,7 @@ def main():
         else:
             options.label = os.path.splitext(os.path.basename(cdict_file))[0]
 
-    if options.show_tids:
+    if options.list:
         print 'List of tids and task names sorted by context switches and kvm event count'
         for dfd in dfds:
             print dfd.name + ':'

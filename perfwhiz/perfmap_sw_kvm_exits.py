@@ -231,7 +231,8 @@ def get_sw_kvm_events(dfd, task_re):
                 events.append(list(row))
             task_events[event] = events
         task_event_list.append({"task": task, "events": task_events})
-    return {'task_events': task_event_list,
+    return {'run':dfd.short_name,
+            'task_events': task_event_list,
             'usecs_min': dfd.from_usec,
             'usecs_max': dfd.to_usec,
             'usecs_duration_max': duration_max}

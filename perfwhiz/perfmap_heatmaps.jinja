@@ -81,16 +81,30 @@ th {
     <h1>{[current_mode.title]}
      <div class="btn-group" uib-dropdown keyboard-nav ng-show="current_index == 0">
         <button id="simple-btn-keyboard-nav" type="button" class="btn btn-primary" uib-dropdown-toggle>
-            {[task_list[task_index]]} <span class="caret" ng-show="task_list.length>1"></span>
+            {[current_mode.taskd[current_mode.task_index].task]} <span class="caret" ng-show="current_mode.taskd.length>1"></span>
         </button>
         <ul uib-dropdown-menu role="menu" aria-labelledby="simple-btn-keyboard-nav">
-            <li ng-hide="task_index==$index" ng-repeat="task in task_list" role="menuitem" ng-click="selectTask($event, $index)"><a href="#">{[task]}</a></li>
+            <li ng-hide="current_mode.task_index==$index" ng-repeat="task in current_mode.taskd" role="menuitem" ng-click="selectTask($event, $index)"><a href="#">{[task.task]}</a></li>
         </ul>
      </div>
      <small>{{info.label}} ({{info.window}} msec window)</small></h1>
 </div>
 <div class="container-fluid" ng-show="current_index == 0">
-    <svg ng-repeat="task in task_list" id="svg-swkvm{[$index]}" ng-show="task_index==$index" initsvg></svg>
+    <svg ng-repeat="task in modes[0].taskd" id="svg-swkvm{[$index]}" ng-show="current_mode.task_index==$index" initsvg>
+        <g> 
+            <g ng-repeat="data in task.data" id="{[data.id]}" ng-show="current_mode.taskd[current_mode.task_index].data[{[$index]}].visible"></g>
+        </g>
+    </svg>
+    <div class="checkbox">
+      <label>
+        <input type="checkbox" ng-model="current_mode.taskd[current_mode.task_index].data[0].visible"> Show "end of run" events
+      </label>
+    </div>
+    <div class="checkbox">
+      <label>
+        <input type="checkbox" ng-model="current_mode.taskd[current_mode.task_index].data[1].visible"> Show "end of sleep" events
+    </label>
+    </div>
 </div>
 <div class="container-fluid" ng-show="current_index == 1">
     <svg id="svg-coreloc"></svg>
@@ -198,10 +212,13 @@ var swk_events = '{{swk_events}}';
 swk_events = JSON.parse(pako.inflate(window.atob(swk_events), {to:'string'}));
 
 function draw_swkvm(scope) {
-    if (scope.task_state[scope.task_index]) {
+    var task_index = scope.current_mode.task_index;
+    var ctask = scope.current_mode.taskd[task_index];
+
+    if (ctask.inited) {
         return;
     }
-    scope.task_state[scope.task_index] = true;
+    ctask.inited = true;
     var total_width = 1100;
     var total_height = 800;
     // approximate left margin required based on longest task name
@@ -224,16 +241,16 @@ function draw_swkvm(scope) {
         .tickFormat(usec_format)
         .tickSize(-width, 0, -width)
         .orient("left");
-    var svg = d3.select("#svg-swkvm"+scope.task_index)
+    var svg = d3.select("#svg-swkvm"+task_index)
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", height + margin.top + margin.bottom)
-                .append("g")
+                .select("g")
                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
     var xaxis = svg.append("g")
         .attr("class", "x axis")
         .attr("transform", "translate(0," + height + ")")
-        .call(xAxis)
-        .append("text")
+        .call(xAxis);
+    xaxis
         .append("text")
         .attr("x", width-28)
         .attr("dy", "2em")
@@ -246,32 +263,23 @@ function draw_swkvm(scope) {
           .attr("y", -10)
           .style("text-anchor", "middle")
           .text("duration");
-    var task_event = swk_events.task_events[scope.task_index];
     // create one g container per event type
-    // reformat data structures in a way that makes d3 work simpler
-    var sw_g = svg.append("g").attr("class", "g").attr("id", "sw");
-    var sw_data = [
-       {id:"run", desc:"end of run", events:task_event.events['sched__sched_switch'], color:"blue", hidden:false},
-       // {id: "sleep", desc:"end of sleep", events:task_event.events['sched__sched_stat_sleep'], color:"red", hidden:true}
-    ]
-    var state = sw_g.selectAll(".state")
-        .data(sw_data)
-        .enter().append("g")
-        .attr("class", "g")
-        .attr("ng-hide", function(d){return "hide"+d.id})
-        .attr("id", function(d) {return d.id;});
-    state.selectAll("circle")
-      .data(function(d) { return d.events; })
-    .enter().append("circle")
-        .attr("cx", function(d) {return x(d[0]);})
-        .attr("cy", function(d) {return y(d[1]);})
-        .attr("r", 4)
-        .style("fill", function(d) {return this.parentNode.__data__.color;})
-        .style("opacity", 0.2);
+    ctask.data.forEach(function(d,i){
+        var state = svg.select("#"+d.id);
+        state.selectAll("circle")
+          .data(d.events)
+        .enter().append("circle")
+            .attr("cx", function(d) {return x(d[0]);})
+            .attr("cy", function(d) {return y(d[1]);})
+            .attr("r", 4)
+            .style("fill", function(dd) {return d.color;})
+            .style("opacity", 0.2);
+    });
     draw_legend(svg,
-        sw_data.map(function(d){return d.desc + " (" + d.events.length + ")"}),
-        sw_data.map(function(d){return d.color}),
-        width, "right", 0, 5, "circle", 0.2)
+        ctask.data.map(function(d){return d.desc + " (" + d.events.length + ")"}),
+        ctask.data.map(function(d){return d.color}),
+        width, "right", 0, 5, "circle", 0.2);
+    draw_right_arrow(xaxis, width-10, 30, 10, 10, "red");
 }
 
 function draw_right_arrow(node, x, y, h, w, color) {
@@ -404,7 +412,17 @@ function draw_coreloc(scope) {
 /* ---------------------------------------- */
 var app = angular.module('pw-heatmaps', ['ui.bootstrap']);
 var modes = [
-    {title:"Context switches", icon:"random", svg:"swkvm", init:draw_swkvm},
+    {title:"Context switches", icon:"random", svg:"swkvm", init:draw_swkvm,
+     task_index: 0,
+     taskd: swk_events.task_events.map(function(d) { 
+        return {task: d.task,
+                inited: false,
+                data: [
+                    {id:"run", desc:"end of run", events:d.events['sched__sched_switch'], color:"blue", visible:true},
+                    {id: "sleep", desc:"end of sleep", events:d.events['sched__sched_stat_sleep'], color:"red",visible:false}
+                ]}; 
+     })
+    },
     {title:"Core locality over time", icon:"globe", svg:"coreloc", init:draw_coreloc},
 ];
 
@@ -445,11 +463,8 @@ function PwHeatMapsCtrl($scope) {
             $scope.current_mode['init'] = null;
         }
     };
-    $scope.task_index = 0;
-    $scope.task_list = swk_events.task_events.map(function(d) { return d.task; });
-    $scope.task_state = $scope.task_list.map(function(d) { return false; });
     $scope.selectTask = function(event, index) {
-        $scope.task_index = index;
+        $scope.current_mode.task_index = index;
         draw_swkvm($scope);
     };
 }

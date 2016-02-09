@@ -25,9 +25,9 @@ The capture script wraps around the Linux perf tool to capture events of
 interest (such as context switches and kvm events) and generates a much more
 compact binary file to be used for analysis offline.
 
-Complete documentation including installation and usage instructions::
+Complete documentation including installation and usage instructions:
 
- `<http://perfwhiz.readthedocs.org/en/latest/>`_
+    http://perfwhiz.readthedocs.org/
 
 
 perfwhiz Workflow
