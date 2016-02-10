@@ -79,7 +79,7 @@ th {
 
 <div class="container-fluid">
     <h1>{[current_mode.title]}
-     <div class="btn-group" uib-dropdown keyboard-nav ng-show="current_index == 0">
+     <div class="btn-group" uib-dropdown keyboard-nav ng-show="current_index < 2">
         <button id="simple-btn-keyboard-nav" type="button" class="btn btn-primary" uib-dropdown-toggle>
             {[current_mode.taskd[current_mode.task_index].task]} <span class="caret" ng-show="current_mode.taskd.length>1"></span>
         </button>
@@ -92,21 +92,38 @@ th {
 <div class="container-fluid" ng-show="current_index == 0">
     <svg ng-repeat="task in modes[0].taskd" id="svg-swkvm{[$index]}" ng-show="current_mode.task_index==$index" initsvg>
         <g> 
-            <g ng-repeat="data in task.data" id="{[data.id]}" ng-show="show_evt[$index]"></g>
+            <g ng-repeat="data in task.data" id="{[data.id]}" ng-show="show_sw_evt[$index]"></g>
         </g>
     </svg>
     <div class="checkbox">
       <label>
-        <input type="checkbox" ng-model="show_evt[0]"> Show "end of run" events
+        <input type="checkbox" ng-model="show_sw_evt[0]"> Show "end of run" events
       </label>
     </div>
     <div class="checkbox">
       <label>
-        <input type="checkbox" ng-model="show_evt[1]"> Show "end of sleep" events
+        <input type="checkbox" ng-model="show_sw_evt[1]"> Show "end of sleep" events
     </label>
     </div>
 </div>
 <div class="container-fluid" ng-show="current_index == 1">
+    <svg ng-repeat="task in modes[0].taskd" id="svg-kvm{[$index]}" ng-show="current_mode.task_index==$index">
+        <g> 
+            <g ng-repeat="data in task.data" id="{[data.id]}" ng-show="show_kvm_evt[$index]"></g>
+        </g>
+    </svg>
+    <div class="checkbox">
+      <label>
+        <input type="checkbox" ng-model="show_kvm_evt[0]"> Show kvm exit events (duration = guest user space before kvm exit)
+      </label>
+    </div>
+    <div class="checkbox">
+      <label>
+        <input type="checkbox" ng-model="show_kvm_evt[1]"> Show kvm entry events (duration = root mode before kvm entry)
+    </label>
+    </div>
+</div>
+<div class="container-fluid" ng-show="current_index == 2">
     <svg id="svg-coreloc"></svg>
 </div>
 
@@ -241,7 +258,7 @@ function draw_swkvm(scope) {
         .tickFormat(usec_format)
         .tickSize(-width, 0, -width)
         .orient("left");
-    var svg = d3.select("#svg-swkvm"+task_index)
+    var svg = d3.select("#svg-"+scope.current_mode.svg+task_index)
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", height + margin.top + margin.bottom)
                 .select("g")
@@ -423,6 +440,17 @@ var modes = [
                 ]}; 
      })
     },
+    {title:"KVM Exits", icon:"log-out", svg:"kvm", init:draw_swkvm,
+     task_index: 0,
+     taskd: swk_events.task_events.map(function(d) { 
+        return {task: d.task,
+                inited: false,
+                data: [
+                    {id:"run", desc:"user space run time (@kvm exit)", events:d.events['kvm_exit'], color:"blue"},
+                    {id: "sleep", desc:"root mode duration (@kvm entry)", events:d.events['kvm_entry'], color:"red"}
+                ]}; 
+     })
+    },
     {title:"Core locality over time", icon:"globe", svg:"coreloc", init:draw_coreloc}
 ];
 
@@ -463,7 +491,8 @@ function PwHeatMapsCtrl($scope) {
             $scope.current_mode['init'] = null;
         }
     };
-    $scope.show_evt = [true, false];
+    $scope.show_sw_evt = [true, false];
+    $scope.show_kvm_evt = [true, true];
     $scope.selectTask = function(event, index) {
         $scope.current_mode.task_index = index;
         draw_swkvm($scope);
