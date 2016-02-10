@@ -32,7 +32,7 @@ from perfmap_common import DfDesc
 from perfmap_common import output_svg_html
 from perfmap_core import get_coremaps
 from perfmap_kvm_exit_types import get_swkvm_data
-from perfmap_sw_kvm_exits import show_sw_kvm_heatmap, get_sw_kvm_events
+from perfmap_sw_kvm_exits import get_sw_kvm_events
 
 from jinja2 import Environment
 from jinja2 import FileSystemLoader
@@ -208,21 +208,6 @@ def main():
                       action="store_true",
                       help="show context switch, kvm exits and core locality heat map (requires --task)"
                       )
-    parser.add_option("--switches",
-                      dest="switches",
-                      action="store_true",
-                      help="show context switches heat map (requires --task)"
-                      )
-    parser.add_option("--kvm-exits",
-                      dest="kvm_exits",
-                      action="store_true",
-                      help="show kvm exits heat map (requires --task)"
-                      )
-    parser.add_option("--show-sleeps",
-                      dest="show_sleeps",
-                      action="store_true",
-                      help="also show sleep events in the context switch heat map (defaults: hide)"
-                      )
     parser.add_option("--label",
                       dest="label",
                       metavar="label",
@@ -315,7 +300,7 @@ def main():
     # if the requested cap_time is > the cdict cap time
     # the relevant processing will extrapolate when needed (and if possible)
 
-    # reduce all names to minimize the length of the cdict file name
+    # reduce all names to minimize the length o;f the cdict file name
     set_short_names(dfds)
 
     if not options.label:
@@ -351,10 +336,6 @@ def main():
     if options.heatmaps:
         create_heatmaps(dfds[0], cap_time, options.task, options.label)
         sys.exit(0)
-
-    if options.switches or options.kvm_exits:
-        show_sw_kvm_heatmap(dfds[0].df, options.task, options.label, options.switches, options.kvm_exits,
-                            options.show_sleeps)
 
     create_charts(dfds, cap_time, options.task, options.label)
 

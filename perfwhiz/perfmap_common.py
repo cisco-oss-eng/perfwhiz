@@ -15,16 +15,8 @@
 #
 #
 # ---------------------------------------------------------
-import bokeh.plotting
 import os
 import webbrowser
-
-# Standard title attribute for all figures
-title_style = {'title_text_font_size': '12pt',
-               'title_text_font_style': 'bold'}
-
-grid_title_style = {'title_text_font_size': '10pt',
-                    'title_text_font_style': 'bold'}
 
 def set_html_file(cdict_file, headless, label, output_dir):
     '''Sets the final html file name prefix and output directory
@@ -41,7 +33,6 @@ def set_html_file(cdict_file, headless, label, output_dir):
     :param output_dir:
     :return:
     '''
-    global output_chart
     global headless_mode
 
     headless_mode = headless
@@ -49,11 +40,6 @@ def set_html_file(cdict_file, headless, label, output_dir):
     # the full prefix of the output file with directory pathname
     global output_file_prefix
     global ignore_task_re
-
-    if headless:
-        output_chart = bokeh.plotting.save
-    else:
-        output_chart = bokeh.plotting.show
 
     if label:
         ignore_task_re = True
@@ -96,12 +82,6 @@ def normalize_task_name(task):
 def normalize_df_task_name(df):
     df['task_name'] = df.apply(lambda row: normalize_task_name(row['task_name']), axis=1)
 
-def get_disc_size(count):
-    if count < 100:
-        return 10
-    if count < 500:
-        return 8
-    return 6
 
 def get_output_file_name(chart_type, task_re):
     filename = output_file_prefix + '-' + chart_type
@@ -113,12 +93,6 @@ def get_output_file_name(chart_type, task_re):
             task_re = task_re[2:]
         filename += '_' + task_re + '.html'
     return filename
-
-def output_html(chart, chart_type, task_re):
-    filename = get_output_file_name(chart_type, task_re)
-    bokeh.plotting.output_file(filename)
-    print('Saved to ' + filename)
-    output_chart(chart)
 
 def output_svg_html(svg_html, chart_type, task_re):
     filename = get_output_file_name(chart_type, task_re)

@@ -18,18 +18,10 @@
 # ---------------------------------------------------------
 
 
-import itertools
 from pandas import DataFrame
 import pandas
 import numpy as np
 
-from bokeh.plotting import figure
-from bokeh.models.sources import ColumnDataSource
-from bokeh.palettes import Spectral6
-
-from perfmap_common import title_style
-from perfmap_common import output_html
-from perfmap_common import get_disc_size
 from perfmap_common import get_time_span_usec
 
 # For sorting

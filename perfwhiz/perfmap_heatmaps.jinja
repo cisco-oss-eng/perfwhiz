@@ -90,7 +90,7 @@ th {
      <small>{{info.label}} ({{info.window}} msec window)</small></h1>
 </div>
 <div class="container-fluid" ng-show="current_index == 0">
-    <svg ng-repeat="task in modes[0].taskd" id="svg-swkvm{[$index]}" ng-show="current_mode.task_index==$index" initsvg>
+    <svg ng-repeat="task in modes[0].taskd" id="svg-sw{[$index]}" ng-show="current_mode.task_index==$index" initsvg>
         <g> 
             <g ng-repeat="data in task.data" id="{[data.id]}" ng-show="show_sw_evt[$index]"></g>
         </g>
@@ -107,7 +107,7 @@ th {
     </div>
 </div>
 <div class="container-fluid" ng-show="current_index == 1">
-    <svg ng-repeat="task in modes[0].taskd" id="svg-kvm{[$index]}" ng-show="current_mode.task_index==$index">
+    <svg ng-repeat="task in modes[1].taskd" id="svg-kvm{[$index]}" ng-show="current_mode.task_index==$index">
         <g> 
             <g ng-repeat="data in task.data" id="{[data.id]}" ng-show="show_kvm_evt[$index]"></g>
         </g>
@@ -429,7 +429,7 @@ function draw_coreloc(scope) {
 /* ---------------------------------------- */
 var app = angular.module('pw-heatmaps', ['ui.bootstrap']);
 var modes = [
-    {title:"Context switches", icon:"random", svg:"swkvm", init:draw_swkvm,
+    {title:"Context switches", icon:"random", svg:"sw", init:draw_swkvm,
      task_index: 0,
      taskd: swk_events.task_events.map(function(d) { 
         return {task: d.task,

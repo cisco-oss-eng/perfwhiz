@@ -21,20 +21,34 @@ Capture all traces for 1 second and use the "tmap.csv" mapping file to assign lo
 
 Traces will be stored in the corresponding cdict file (e.g. "test2.cdict").
 
+Generate the cdict file for an existing perf data file and name the resulting cdict file "oldrun.cdict"::
+
+    perfcap --use-perf-data perf.data oldrun
+
+
+
 Examples of chart generation
 ----------------------------
 
-Generate charts for all tasks with a name ending with "vcpu0" from the "test.cdict" capture file::
-    perfmap.py -t '.*vcpu0' test.cdict
+Generate the basic dashboard containing charts for all tasks with a name ending with "vcpu0" from the "test.cdict" capture file::
+
+    perfmap.py -t '*vcpu0' test.cdict
 
 Only show the first 1000 msec of capture::
-    perfmap.py -t '.*vcpu0' -c 1000 test.cdict
+
+    perfmap.py -t '*vcpu0' -c 1000 test.cdict
 
 Only show 1000 msec of capture starting from 2 seconds past the start of capture::
-    perfmap.py -t '.*vcpu0' -c 1000 -f 2000 test.cdict
 
-Generate diff charts for 2 capture files::
-    perfmap.py -t '.*vcpu0' test.cdict test2.cdict
+    perfmap.py -t '*vcpu0' -c 1000 -f 2000 test.cdict
+
+Generate the basic dashboard with diff charts for 2 capture files::
+
+    perfmap.py -t '*vcpu0' test.cdict test2.cdict
+
+Generate the heatmap dashboard for context switches and KVM exits for the first 100msec for all tasks ending with "vcpu0"::
+
+    perfmap.py -t '*vcpu0' --heatmaps -c 100 test.cdict test2.cdict
 
 
 Task Name Annotation
