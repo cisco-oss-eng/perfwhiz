@@ -92,17 +92,17 @@ th {
 <div class="container-fluid" ng-show="current_index == 0">
     <svg ng-repeat="task in modes[0].taskd" id="svg-swkvm{[$index]}" ng-show="current_mode.task_index==$index" initsvg>
         <g> 
-            <g ng-repeat="data in task.data" id="{[data.id]}" ng-show="current_mode.taskd[current_mode.task_index].data[{[$index]}].visible"></g>
+            <g ng-repeat="data in task.data" id="{[data.id]}" ng-show="show_evt[$index]"></g>
         </g>
     </svg>
     <div class="checkbox">
       <label>
-        <input type="checkbox" ng-model="current_mode.taskd[current_mode.task_index].data[0].visible"> Show "end of run" events
+        <input type="checkbox" ng-model="show_evt[0]"> Show "end of run" events
       </label>
     </div>
     <div class="checkbox">
       <label>
-        <input type="checkbox" ng-model="current_mode.taskd[current_mode.task_index].data[1].visible"> Show "end of sleep" events
+        <input type="checkbox" ng-model="show_evt[1]"> Show "end of sleep" events
     </label>
     </div>
 </div>
@@ -418,12 +418,12 @@ var modes = [
         return {task: d.task,
                 inited: false,
                 data: [
-                    {id:"run", desc:"end of run", events:d.events['sched__sched_switch'], color:"blue", visible:true},
-                    {id: "sleep", desc:"end of sleep", events:d.events['sched__sched_stat_sleep'], color:"red",visible:false}
+                    {id:"run", desc:"end of run", events:d.events['sched__sched_switch'], color:"blue"},
+                    {id: "sleep", desc:"end of sleep", events:d.events['sched__sched_stat_sleep'], color:"red"}
                 ]}; 
      })
     },
-    {title:"Core locality over time", icon:"globe", svg:"coreloc", init:draw_coreloc},
+    {title:"Core locality over time", icon:"globe", svg:"coreloc", init:draw_coreloc}
 ];
 
 app.config(['$interpolateProvider', function($interpolateProvider) {
@@ -463,6 +463,7 @@ function PwHeatMapsCtrl($scope) {
             $scope.current_mode['init'] = null;
         }
     };
+    $scope.show_evt = [true, false];
     $scope.selectTask = function(event, index) {
         $scope.current_mode.task_index = index;
         draw_swkvm($scope);
