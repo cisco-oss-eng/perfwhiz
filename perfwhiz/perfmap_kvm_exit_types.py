@@ -22,12 +22,11 @@ import pandas
 from perfmap_core import get_cpu_sw_map
 
 import itertools
-import matplotlib.pyplot as plt
-from matplotlib import colors
 import numpy as np
 
-# Use the matplotlib pastel1 palette for exit codes that do not have an assigned color
-default_palette = [colors.rgb2hex(rgb) for rgb in plt.cm.Pastel1(np.linspace(0, 1, 10))]
+# This palette is extracted from colorbrewer2 qualitative palette #2 with 12 colors
+default_palette =['#8dd3c7','#ffffb3','#bebada','#fb8072','#80b1d3','#fdb462',
+                  '#b3de69','#fccde5','#d9d9d9','#bc80bd','#ccebc5','#ffed6f'];
 default_color_palette = itertools.cycle(default_palette)
 # This palette is extracted from colorbrewer2 qualitative palette with 10 colors
 assigned_palette = ['#a6cee3', '#1f78b4', '#ff7f00', '#33a02c', '#fb9a99',
