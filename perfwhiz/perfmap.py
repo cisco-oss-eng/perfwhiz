@@ -151,9 +151,9 @@ def get_info(dfd, label):
 
 def get_tpl(tpl_file):
     local_path = resource_filename(__name__, tpl_file)
-    template_loader = FileSystemLoader(searchpath=".")
+    template_loader = FileSystemLoader(searchpath=os.path.dirname(local_path))
     template_env = Environment(loader=template_loader, trim_blocks=True, lstrip_blocks=True)
-    return template_env.get_template(local_path)
+    return template_env.get_template(tpl_file)
 
 def create_charts(dfds, cap_time_usec, task_re, label):
     coremaps = get_coremaps(dfds, cap_time_usec, task_re)
@@ -188,25 +188,10 @@ def main():
 
     parser = OptionParser(usage="usage: %prog [options] <cdict_file1> [cdict_file2...]")
 
-    parser.add_option("--successors-of",
-                      dest="successor_of_task",
-                      help="show list of successors of given tid or task name"
-                      )
-    parser.add_option("--list",
-                      dest="list",
-                      action="store_true",
-                      default=False,
-                      help="show list of all tasks with event count"
-                      )
     parser.add_option("-t", "--task",
                       dest="task",
                       metavar="task name (regex)",
                       help="selected task(s) (regex on task name)"
-                      )
-    parser.add_option("--heatmaps",
-                      dest="heatmaps",
-                      action="store_true",
-                      help="show context switch, kvm exits and core locality heat map (requires --task)"
                       )
     parser.add_option("--label",
                       dest="label",
@@ -244,6 +229,16 @@ def main():
                       dest="merge_sys_tasks",
                       action="store_true",
                       help="group all system tasks (e.g. swapper/0 -> swapper)"
+                      )
+    parser.add_option("--successors-of",
+                      dest="successor_of_task",
+                      help="only show list of successors of given tid or task name"
+                      )
+    parser.add_option("--list",
+                      dest="list",
+                      action="store_true",
+                      default=False,
+                      help="only show list of all tasks with event count"
                       )
     (options, args) = parser.parse_args()
 
@@ -333,9 +328,9 @@ def main():
     if options.task.startswith("*"):
         options.task = "." + options.task
 
-    if options.heatmaps:
+    # create heatmaps only if one cdict was given
+    if len(dfds) == 1:
         create_heatmaps(dfds[0], cap_time, options.task, options.label)
-        sys.exit(0)
 
     create_charts(dfds, cap_time, options.task, options.label)
 
