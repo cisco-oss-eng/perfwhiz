@@ -9,14 +9,15 @@ and KVM events.
 
 The basic dashboard illustrates general scheduler and KVM events for all tasks selected at capture time:
 
+- CPU Usage vs. context switches chart
 - KVM exit types distribution stacked bar charts (exit type distribution per task)
-- task scheduler core assignment and context switch count heat maps (run time % and context switch count on each core per task - including total time per core and per task)
+- Summary CoreMap showing task scheduler core assignment and context switch count heat maps (run time % and context switch count on each core per task - including total time per core and per task)
 
 The detailed dashboard illustrates detailed scheduler and KVM events at the task level:
 
 - context switch heat maps (temporal distribution of context switch events)
 - KVM exit heat maps (temporal distribution of kvm entry and exit events)
-- Coremaps (on which core does any given task run over time)
+- Temporal Coremaps (on which core does any given task run over time)
 
 The task annotation feature further allows the generation of cross-run charts (diffs) that can help
 detect more easily differences of behavior across multiple captures/runs.

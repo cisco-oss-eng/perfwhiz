@@ -14,6 +14,7 @@ Contents:
    overview 
    installation
    usage
+   faq
 
 Indices and tables
 ==================

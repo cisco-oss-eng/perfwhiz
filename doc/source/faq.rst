@@ -3,7 +3,6 @@ Perfwhiz FAQ
 ============
 
 
-
 Can I get charts for existing perf data files?
 ----------------------------------------------
 Yes it is possible to generate cdict files from existing perf binary data files. You just need to make sure that

@@ -51,11 +51,12 @@ Generate the basic dashboard with diff charts for 2 capture files (the heatmap d
 Task Name Annotation
 --------------------
 
-Analyzing data with pid, tid and the raw task name may not always be optimal because numeric task or process IDs are not very meaningful
-and the raw task name may be a generic name (such as "/usr/bin/qemu-system-x86_64" for a VM or "/usr/bin/python" for a python process).
+Analyzing data with pid, tid and the raw task name may not always be optimal because numeric task/process IDs are not very meaningful
+and the raw task name may be a generic name (such as "/usr/bin/qemu-system-x86_64" for a VM or "/usr/bin/python" for a python process). Annotating task names allows such non descript tasks to be renamed for chart display purpose.
 
-One additional benefit of annotating task names is that it allows easier comparative analysis across runs that involve re-launching the tested processes.
-For example assume each run requires launching 2 groups of 2 instances of VMs where each VM instance plays a certain role in its own group.
+One additional benefit of annotating task names is that it allows easier comparative analysis across runs that may involve re-launching the tested processes (and in that case will have different task or process IDs).
+
+For example assume each run requires launching 2 groups of 2 instances of VMs where each VM instance plays a certain role in its own group (router and firewall role, each group has 1 router and 1 firewall VM, forming what is called a service chain).
 
 Without annotation the analysis will have to work with generic names such as:
 
@@ -73,8 +74,13 @@ Run #2::
     - vm_firewall, pid7 (group 1)
     - vm_firewall, pid8 (group 2)
 
-The group membership for each process is completely lost during capture, making comparative analysis extremely difficult as you'd need to
-associate pid1 to pid5, pid2 to piud6 etc...
+The group membership for each process is completely lost during capture, making comparative analysis extremely difficult as you'd need to make a mental association of pid1 to pid5, pid2 to pid6 etc...
+
+Worst, with the use of default non decript names you'd have to juggle with tasks such as:
+
+    - /usr/bin/qemu-system-x86_64, pid1
+    - /usr/bin/qemu-system-x86_64, pid2
+    - etc...
 
 With annotation, the task name could reflect the role and group membership:
 
@@ -148,7 +154,13 @@ Resulting annotated name from the above example::
     Firewall.05.vcpu0
     Router.02.emulator
 
+The helper script create-vm-csv.sh that is included in the git repository illustrates how such csv file can be created before capturing the traces.
+
 
 OpenStack Plug-In
 -----------------
+Task name mapping can be performed automatically when VMs are being launched by OpenStack. In that case, the perfcap.py script will query OpenStack to retrieve the list of VM instances and deduct the task name mapping by associating OpenStack instance information to the corresponding task ID.
+This feature is still experimental and may be moved out of perfwhiz completely into a separate tool that generates the CSV mapping file from OpenStack queries.
+
+
 
