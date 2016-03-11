@@ -210,6 +210,11 @@ def main():
                       metavar="dir pathname",
                       help="output all html files to the provided directory"
                       )
+    parser.add_option("--heatmaps",
+                      dest="heatmaps",
+                      action="store_true",
+                      help="generate heatmap charts only (default: generate basic charts only)"
+                      )
     parser.add_option("--headless",
                       dest="headless",
                       action="store_true",
@@ -329,10 +334,14 @@ def main():
         options.task = "." + options.task
 
     # create heatmaps only if one cdict was given
-    if len(dfds) == 1:
-        create_heatmaps(dfds[0], cap_time, options.task, options.label)
-
-    create_charts(dfds, cap_time, options.task, options.label)
+    if options.heatmaps:
+        if len(dfds) == 1:
+            create_heatmaps(dfds[0], cap_time, options.task, options.label)
+        else:
+            print 'Error: --heat-maps requires 1 cdict file only'
+            sys.exit(1)
+    else:
+        create_charts(dfds, cap_time, options.task, options.label)
 
 if __name__ == '__main__':
     try:
