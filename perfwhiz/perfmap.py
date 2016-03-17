@@ -315,6 +315,7 @@ def main():
             print dfd.name + ':'
             res = dfd.df.groupby(['pid', 'task_name']).size()
             res.sort_values(ascending=False, inplace=True)
+            pandas.set_option('display.max_rows', len(res))
             print res
         sys.exit(0)
 
