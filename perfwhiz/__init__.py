@@ -17,5 +17,3 @@ import pbr.version
 
 
 __version__ = pbr.version.VersionInfo('perfwhiz').version_string_with_vcs()
-
-

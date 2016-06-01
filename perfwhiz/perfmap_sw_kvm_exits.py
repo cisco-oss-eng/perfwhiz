@@ -59,8 +59,7 @@ def get_sw_kvm_events(dfd, task_re):
     nb_tasks = len(gb.groups)
     if nb_tasks == 0:
         raise RuntimeError('No selection matching: ' + task_re)
-    sw_kvm_events = {}
-    event_list = ['sched__sched_switch', 'sched__sched_stat_sleep', 'kvm_exit', 'kvm_entry'];
+    event_list = ['sched__sched_switch', 'sched__sched_stat_sleep', 'kvm_exit', 'kvm_entry']
     task_list = gb.groups.keys()
     task_list.sort()
     duration_max = -1
@@ -87,9 +86,8 @@ def get_sw_kvm_events(dfd, task_re):
                 events.append(list(row))
             task_events[event] = events
         task_event_list.append({"task": task, "events": task_events})
-    return {'run':dfd.short_name,
+    return {'run': dfd.short_name,
             'task_events': task_event_list,
             'usecs_min': dfd.from_usec,
             'usecs_max': dfd.to_usec,
             'usecs_duration_max': duration_max}
-

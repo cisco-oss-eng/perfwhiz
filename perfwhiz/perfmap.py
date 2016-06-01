@@ -24,6 +24,8 @@ import sys
 import warnings
 import pandas
 from pandas import DataFrame
+import json
+import traceback
 
 from perf_formatter import open_cdict
 
@@ -166,12 +168,11 @@ def create_charts(dfds, cap_time_usec, task_re, label):
                           info=get_info(dfds[0], label))
     output_svg_html(svg_html, 'charts', task_re)
 
-import json
 def create_heatmaps(dfd, cap_time_usec, task_re, label):
     swk_events = get_sw_kvm_events(dfd, task_re)
 
     tpl = get_tpl('perfmap_heatmaps.jinja')
-    json_swk = json.dumps(swk_events, separators=(',',':'))
+    json_swk = json.dumps(swk_events, separators=(',', ':'))
     b64_zlib = base64.b64encode(zlib.compress(json_swk))
     svg_html = tpl.render(swk_events=b64_zlib,
                           info=get_info(dfd, label))
@@ -349,6 +350,6 @@ if __name__ == '__main__':
         main()
     except Exception as ex:
         print
-        print 'Error: ' + ex.message
+        traceback.print_exc()
         print
         sys.exit(1)

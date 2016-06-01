@@ -14,6 +14,7 @@ import os
 import sys
 from os.path import expanduser
 import re
+import zlib
 
 # Location of the perf python helper files
 try:
@@ -35,7 +36,6 @@ try:
 except ImportError:
     # else fall back to the pure python version (slower)
     from umsgpack import packb
-import zlib
 
 # pandas dataframe friendly data structures
 event_name_list = []

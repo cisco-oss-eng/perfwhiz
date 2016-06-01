@@ -75,12 +75,12 @@ th {
 <div class="container-fluid" ng-show="current_index == 0">
     <svg id="svg-cpu"></svg>
 </div>
-<div class="container-fluid" ng-show="current_index == 1">
+<div class="container-fluid" ng-show="current_index == kvm_tab_index">
   <svg id="svg-kvm-exits"></svg>
   <br><br>
   <table id="table" class="table display compact table-bordered" cellspacing="50" width="100%"></table>
 </div>
-<div class="container-fluid" ng-show="current_index == 2">
+<div class="container-fluid" ng-show="current_index == coremap_tab_index">
     <svg ng-repeat="run in coremap_runs" id="svg-coremap{[$index]}" ng-show="coremap_index==$index"></svg>
 </div>
 <br><br>
@@ -601,12 +601,23 @@ var modes = [
     {title:"KVM Exit count by type", icon:"log-out", svg:"kvm_exits", init:draw_kvm_exits},
     {title:"CoreMap", icon:"equalizer", svg:"coremap", init:draw_coremap}
 ];
+// if no kvm events, do not show the kvm exit tab
+if (reasonmap.length == 0) {
+    modes.splice(1, 1);
+}
 app.config(['$interpolateProvider', function($interpolateProvider) {
   $interpolateProvider.startSymbol('{[');
   $interpolateProvider.endSymbol(']}');
 }]);
 app.controller('PwCtrl', PwCtrl);
 function PwCtrl($scope) {
+    if (reasonmap.length == 0) {
+        $scope.kvm_tab_index = -1
+        $scope.coremap_tab_index = 1
+    } else {
+        $scope.kvm_tab_index = 1
+        $scope.coremap_tab_index = 2    
+    }
     $scope.coremap_state = coremaps.map(function(d) { return false; });
     $scope.current_index = 0;
     $scope.modes = modes;

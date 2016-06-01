@@ -25,8 +25,8 @@ import itertools
 import numpy as np
 
 # This palette is extracted from colorbrewer2 qualitative palette #2 with 12 colors
-default_palette =['#8dd3c7','#ffffb3','#bebada','#fb8072','#80b1d3','#fdb462',
-                  '#b3de69','#fccde5','#d9d9d9','#bc80bd','#ccebc5','#ffed6f'];
+default_palette = ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462',
+                   '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd', '#ccebc5', '#ffed6f']
 default_color_palette = itertools.cycle(default_palette)
 # This palette is extracted from colorbrewer2 qualitative palette with 10 colors
 assigned_palette = ['#a6cee3', '#1f78b4', '#ff7f00', '#33a02c', '#fb9a99',
@@ -153,61 +153,20 @@ def get_exit_color(code):
         exit_desc.append(color)
     return color
 
-'''
-def convert_exit_df(df, label):
-    # fill in the error reason text from the code in
-    df.next_comm = df.next_comm.apply(lambda x: '(%02d) %s' % (x, KVM_EXIT_REASONS[x][0]))
-    series_percent = df.next_comm.value_counts(normalize=True)
-    series_count = df.next_comm.value_counts()
-    series_percent = pandas.Series(["{0:.2f}%".format(val * 100) for val in series_percent],
-                                   index=series_percent.index)
-
-    series_percent.name = '%'
-    series_count.name = label + ' count'
-
-    res = pandas.concat([series_count, series_percent], axis=1)
-    return res
-
-    # Show aggregated time inside VM and inside KVM
-    print
-    print 'Aggregated duration:'
-    for event in legend_map:
-        percent = accumulated_time[event] * 100 / total_time
-        print '   %40s: %9d usec %3d%%' % (legend_map[event][1], accumulated_time[event], percent)
-    print '   %40s: %9d usec %3d%%' % ('Total', total_time, 100)
-    print
-
-    # all exit types
-    dfexits = df[df.event == 'kvm_exit']
-
-    # now keep only the last exit before a switch
-    # only keep kvm_exits and context switches
-    df = df[(df['event'] == 'kvm_exit') | (df['event'] == 'sched__sched_switch')]
-
-    # move all rows up
-    sdf = df.shift(-1)
-    # only keep rows that have a different event than their next row
-    df = df[df['event'] != sdf['event']]
-    # delete last row
-    df = df.drop(df.tail(1).index)
-
-    # delete all sched switches as they have served their purpose
-    df = df[df['event'] == 'kvm_exit']
-
-    show_exit_type_count(dfexits, df)
-
-    def show_exit_type_count(df_all_exits, df_last_exits):
-
-        res_all = convert_exit_df(df_all_exits, 'total')
-        res_last = convert_exit_df(df_last_exits, 'last exit')
-        res = pandas.concat([res_all, res_last], axis=1)
-        res.fillna(0, inplace=True)
-        res.sort_values('total count', inplace=True, ascending=False)
-        print res
-'''
-
+def update_task_list(task_list, cpu_sw_map):
+    # Add stats for those tasks that do not have any KVM exits
+    for task_name in cpu_sw_map:
+        cpu, sw = cpu_sw_map[task_name]
+        task_list.append({'name': task_name,
+                          'exit_count': [],
+                          'cpu': round(cpu, 1),
+                          'sw': int(sw)})
+    # get in reverse order so we display them top to bottom on a
+    # horizontal stacked bar chart
+    task_list.reverse()
 
 def get_swkvm_data(dfds, cap_time_usec, task_re):
+    task_list = []
 
     # calculate the total cpu and total context switches per task
     cpu_sw_map = get_cpu_sw_map(dfds, cap_time_usec, task_re)
@@ -217,8 +176,9 @@ def get_swkvm_data(dfds, cap_time_usec, task_re):
     # capture window being too small
     df, adjust_count_ratios = aggregate_dfs(dfds, task_re)
     if df.empty:
-        print 'Error: No kvm traces matching ' + task_re
-        return
+        print 'Warning: No kvm traces matching ' + task_re
+        update_task_list(task_list, cpu_sw_map)
+        return (task_list, [], [])
     df.drop(['cpu', 'duration', 'event', 'next_pid', 'pid', 'usecs'], inplace=True, axis=1)
 
     # Get the list of exit reason codes, sorted numerically
@@ -259,7 +219,6 @@ def get_swkvm_data(dfds, cap_time_usec, task_re):
     #     task_list = [
     #    {"name":"Router", "exit_list":[{"name":"EPT violation", "count":400}, {"name":"APIC_WRITE", "count":300}]},
     #    {"name":"Firewall", "exit_list":[{"name":"VMRESUME", "count":300}, {"name":"HLT", "count":930}]}]
-    task_list = []
     for task_name in task_names:
         exit_count_list = [0] * len(exit_reason_list)
         if adjust_count_ratios:
@@ -287,14 +246,6 @@ def get_swkvm_data(dfds, cap_time_usec, task_re):
                           'cpu': round(cpu, 1),
                           'sw': int(sw)})
     # Add stats for those tasks that do not have any KVM exits
-    for task_name in cpu_sw_map:
-        cpu, sw = cpu_sw_map[task_name]
-        task_list.append({'name': task_name,
-                          'exit_count': [],
-                          'cpu': round(cpu, 1),
-                          'sw': int(sw)})
+    update_task_list(task_list, cpu_sw_map)
 
-    # get in reverse order so we display them top to bottom on a
-    # horizontal stacked bar chart
-    task_list.reverse()
     return (task_list, exit_reason_list, colormap_list)

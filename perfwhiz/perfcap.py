@@ -39,7 +39,6 @@ perf_binary = 'perf'
 # The qemu task names need to be transformed into
 # a type (emulator or vcpu0)
 # By default, qemu-system-x86:13568 becomes qemu.vcpu0:13568 (for example)
-#
 
 def get_curated_latency_table(opts, table):
     try:
@@ -93,10 +92,30 @@ def perf_record(opts, cs=True, kvm=True):
         return False
     return True
 
+def get_perf_version():
+    cmd = [perf_binary, '--version']
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=None)
+    results, errors = process.communicate()
+    if errors:
+        print 'Error: cannot get perf version'
+        return "0"
+    # perf version 3.13.9
+    # perf version 4.2.8-ckt4
+    version = results.split()
+    if len(version) > 2:
+        return version[2]
+    print 'Error: unexpected perf version string ' + results
+    return "0"
 
 def capture_stats(opts, stats_filename):
+    perf_version = get_perf_version()
+
     # perf sched latency -s switch
     cmd = [perf_binary, 'sched', 'latency', '-s', 'switch']
+    # starting from perf 4 you need to explicitly ask for pid display (-p)
+    # in order to get the task name followed by the pid (compatible wth perf 3.x)
+    if perf_version >= "4":
+        cmd.append("-p")
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=None)
     results, errors = process.communicate()
     if errors:
