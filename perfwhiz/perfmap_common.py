@@ -135,7 +135,7 @@ class DfDesc(object):
     - multiplier (to indicate if the df is under sampled)
     - name
     '''
-    def __init__(self, cdict_file, df, merge_sys_tasks=False):
+    def __init__(self, cdict_file, df, merge_sys_tasks=False, append_tid=False):
         # remove the cdict extension if any
         if cdict_file.endswith('.cdict'):
             cdict_file = cdict_file[:-6]
@@ -148,6 +148,8 @@ class DfDesc(object):
         if merge_sys_tasks:
             # aggregate all the per core tasks (e.g. swapper/0 -> swapper)
             self.df['task_name'] = self.df['task_name'].str.replace(r'/.*$', '')
+        if append_tid:
+            self.df['task_name'] = self.df['task_name'] + ':' + self.df['pid'].astype(str)
 
     def normalize(self, from_time_usec, to_time_usec):
         # remove all samples that are under the start time

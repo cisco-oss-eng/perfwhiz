@@ -163,7 +163,7 @@ def update_task_list(task_list, cpu_sw_map):
                           'sw': int(sw)})
     # get in reverse order so we display them top to bottom on a
     # horizontal stacked bar chart
-    task_list.reverse()
+    return sorted(task_list, key=lambda k: k['name'], reverse=True) 
 
 def get_swkvm_data(dfds, cap_time_usec, task_re):
     task_list = []
@@ -177,7 +177,8 @@ def get_swkvm_data(dfds, cap_time_usec, task_re):
     df, adjust_count_ratios = aggregate_dfs(dfds, task_re)
     if df.empty:
         print 'Warning: No kvm traces matching ' + task_re
-        update_task_list(task_list, cpu_sw_map)
+        task_list = update_task_list(task_list, cpu_sw_map)
+        # sort by task name
         return (task_list, [], [])
     df.drop(['cpu', 'duration', 'event', 'next_pid', 'pid', 'usecs'], inplace=True, axis=1)
 
@@ -246,6 +247,6 @@ def get_swkvm_data(dfds, cap_time_usec, task_re):
                           'cpu': round(cpu, 1),
                           'sw': int(sw)})
     # Add stats for those tasks that do not have any KVM exits
-    update_task_list(task_list, cpu_sw_map)
+    task_list = update_task_list(task_list, cpu_sw_map)
 
     return (task_list, exit_reason_list, colormap_list)

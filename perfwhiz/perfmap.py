@@ -236,6 +236,11 @@ def main():
                       action="store_true",
                       help="group all system tasks (e.g. swapper/0 -> swapper)"
                       )
+    parser.add_option("--append-tid",
+                      dest="append_tid",
+                      action="store_true",
+                      help="append tid to task name (e.g. perf -> perf:2834)"
+                      )
     parser.add_option("--successors-of",
                       dest="successor_of_task",
                       help="only show list of successors of given tid or task name"
@@ -279,7 +284,7 @@ def main():
     for cdict_file in cdict_files:
         perf_dict = open_cdict(cdict_file, options.map)
         df = DataFrame(perf_dict)
-        dfd = DfDesc(cdict_file, df, options.merge_sys_tasks)
+        dfd = DfDesc(cdict_file, df, options.merge_sys_tasks, options.append_tid)
         dfds.append(dfd)
         last_usec = df['usecs'].iloc[-1]
         if min_cap_usec == 0:
