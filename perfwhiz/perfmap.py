@@ -141,13 +141,16 @@ def set_short_names(dfds):
         if strip_tail:
             dfd.short_name = dfd.short_name[:-len(strip_tail)]
 
-def get_info(dfd, label):
+def get_info(dfd, label, max_core):
+    # allow at least 32 cores
+    if max_core < 32:
+        max_core = 32
     # Other misc information in the chart
     return {
         "label": label,
         "window": "{:,d}".format((dfd.to_usec - dfd.from_usec) / 1000),
         "date": time.strftime("%d-%b-%Y"),    # 01-Jan-2016 format
-        "max_cores": 32,
+        "max_cores": max_core,
         "version": __version__
     }
 
@@ -158,14 +161,14 @@ def get_tpl(tpl_file):
     return template_env.get_template(tpl_file)
 
 def create_charts(dfds, cap_time_usec, task_re, label):
-    coremaps = get_coremaps(dfds, cap_time_usec, task_re)
+    coremaps, max_core = get_coremaps(dfds, cap_time_usec, task_re)
     task_list, exit_reason_list, colormap_list = get_swkvm_data(dfds, cap_time_usec, task_re)
     tpl = get_tpl('perfmap_charts.jinja')
     svg_html = tpl.render(exit_reason_list=str(exit_reason_list),
                           task_list=task_list,
                           colormap_list=str(colormap_list),
                           coremaps=coremaps,
-                          info=get_info(dfds[0], label))
+                          info=get_info(dfds[0], label, max_core))
     output_svg_html(svg_html, 'charts', task_re)
 
 def create_heatmaps(dfd, cap_time_usec, task_re, label):
@@ -306,7 +309,7 @@ def main():
     # if the requested cap_time is > the cdict cap time
     # the relevant processing will extrapolate when needed (and if possible)
 
-    # reduce all names to minimize the length o;f the cdict file name
+    # reduce all names to minimize the length of the cdict file name
     set_short_names(dfds)
 
     if not options.label:

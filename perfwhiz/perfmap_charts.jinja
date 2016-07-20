@@ -497,7 +497,7 @@ function draw_coremap(scope) {
         .scale(y)
         .orient("left");
     var xrange = d3.range(max_cores);
-    var x_label_allcores = '0-' + (max_cores-1);
+    var x_label_allcores = 'all';
     xrange.push(x_label_allcores);
     var x = d3.scale.ordinal()
         .rangeBands([0, width], 0.01, 0.01)

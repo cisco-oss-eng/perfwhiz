@@ -78,6 +78,7 @@ def get_coremaps(dfds, cap_time_usec, task_re):
     ]
     '''
     coremaps = []
+    max_core = 0
     for dfd in dfds:
         df = dfd.df
         time_span_usec = get_time_span_usec(df)
@@ -97,7 +98,9 @@ def get_coremaps(dfds, cap_time_usec, task_re):
         if len(df) == 0:
             print
             print 'No selection matching "%s"' % (task_re)
-            return None
+            return None, 0
+        largest_core = df['cpu'].max()
+        max_core = max(max_core, largest_core)
         gb = df.groupby(['task_name', 'cpu'], as_index=False)
 
         # because we only show percentages, there is no need to apply the multiplier
@@ -140,7 +143,7 @@ def get_coremaps(dfds, cap_time_usec, task_re):
         dfallcores = gball.aggregate(np.sum)
         dfallcores['percent'] = np.round(dfallcores['percent'], 2)
         dfallcores['task_name'] = dfallcores.index
-        dfallcores['cpu'] = '0-31'
+        dfallcores['cpu'] = 'all'
 
         # sort all the tasks in reverse order (without the 'all tasks')
         task_list = gball.groups.keys()
@@ -172,7 +175,7 @@ def get_coremaps(dfds, cap_time_usec, task_re):
 
         coremap = {"run": dfd.short_name, "coremap": cml, "extent": str([min_count, max_count])}
         coremaps.append(coremap)
-    return coremaps
+    return coremaps, max_core + 1
 
 def get_cpu_sw_map(dfds, cap_time_usec, task_re):
     df_list = []
