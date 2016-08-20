@@ -344,6 +344,9 @@ def _kvm__kvm_exit(event_name, context, common_cpu,
 def kvm__kvm_exit(*args):
     _dispatch(_kvm__kvm_exit, *args)
 
+def sched__sched_wake_idle_without_ipi(*args):
+    drop_event(args[0])
+
 def sched__sched_process_hang(*args):
     drop_event(args[0])
 
@@ -504,6 +507,12 @@ def kvm__kvm_hypercall(*args):
     drop_event(args[0])
 
 def kvm__kvm_ple_window(*args):
+    drop_event(args[0])
+
+def kvm__kvm_wait_lapic_expire(*args):
+    drop_event(args[0])
+
+def kvm__kvm_vcpu_wakeup(*args):
     drop_event(args[0])
 
 def trace_unhandled(event_name, context, event_fields_dict):
