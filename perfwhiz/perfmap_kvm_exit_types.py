@@ -155,6 +155,8 @@ def get_exit_color(code):
 
 def update_task_list(task_list, cpu_sw_map):
     # Add stats for those tasks that do not have any KVM exits
+    if not cpu_sw_map:
+        return []
     for task_name in cpu_sw_map:
         cpu, sw = cpu_sw_map[task_name]
         task_list.append({'name': task_name,

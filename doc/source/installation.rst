@@ -81,6 +81,11 @@ by doing::
 
     $ python perfcap.py -h
 
+Note that perfcap can be used without pip install (just git clone). In that case, captures
+will compress the results using pure python code, which makes it relatively slower than
+when installing requirements using pip install (as this pulls in a faster compression library).
+
+
 perfmap.py
 ----------
 

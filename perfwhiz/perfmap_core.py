@@ -211,6 +211,9 @@ def get_cpu_sw_map(dfds, cap_time_usec, task_re):
             dfsw['count'] = dfsw['count'].astype(int)
         dfsw_list.append(dfsw)
 
+    if not df_list:
+        return None
+
     df = pandas.concat(df_list)
     df = df.drop('duration', axis=1)
     dfsw = pandas.concat(dfsw_list)

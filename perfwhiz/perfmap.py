@@ -141,7 +141,7 @@ def set_short_names(dfds):
         if strip_tail:
             dfd.short_name = dfd.short_name[:-len(strip_tail)]
 
-def get_info(dfd, label, max_core):
+def get_info(dfd, label, max_core=32):
     # allow at least 32 cores
     if max_core < 32:
         max_core = 32
@@ -164,6 +164,7 @@ def create_charts(dfds, cap_time_usec, task_re, label):
     coremaps, max_core = get_coremaps(dfds, cap_time_usec, task_re)
     task_list, exit_reason_list, colormap_list = get_swkvm_data(dfds, cap_time_usec, task_re)
     tpl = get_tpl('perfmap_charts.jinja')
+
     svg_html = tpl.render(exit_reason_list=str(exit_reason_list),
                           task_list=task_list,
                           colormap_list=str(colormap_list),
